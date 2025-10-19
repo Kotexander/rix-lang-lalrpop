@@ -1,0 +1,87 @@
+use crate::ast::Expr;
+use crate::ast::BinOp;
+use crate::ast::UniOp;
+use crate::ast::Item;
+use crate::ast::Instr;
+use lalrpop_util::ParseError;
+
+grammar;
+
+extern {
+    type Error = String;
+}
+
+pub Program = (Item)*;
+
+Item: Item = {
+    "fn" <Id> "(" ")" "{" <(Instr)*> "}" => Item::Function(<>),
+}
+Instr: Instr = {
+    "return" <Expr?> ";" => Instr::Return(<>),
+    <Id> "(" <Exprs> ")" => Instr::Call(<>),
+}
+
+Tier<Op, NextTier> = {
+    Tier<Op, NextTier> Op NextTier => Expr::bin_op(<>),
+    NextTier,
+}
+
+Expr = Tier<BinOpExpr, Factor>;
+Exprs: Vec<Expr> = Comma<Expr>;
+
+Comma<T>: Vec<T> = {
+    <mut v:(<T> ",")*> <e:T?> => match e {
+        None => v,
+        Some(e) => {
+            v.push(e);
+            v
+        }
+    }
+};
+
+
+Factor = Tier<BinOpFactor, Term>;
+
+// pub Expr = {
+//     Expr ExprOp Factor => Expr::bin_op(<>),
+//     Factor,
+// }
+//
+// Factor = {
+//     Factor FactorOp Term => Expr::bin_op(<>),
+//     Term,
+// }
+
+Term: Expr = {
+    Num => Expr::Number(<>),
+    UniOp Term => Expr::uni_op(<>),
+    "(" <Expr> ")",
+    Id => Expr::Variable(<>),
+    r#""([^"\\\n]|\\.)*""# => {
+        let s = &<>[1..<>.len()-1];
+        Expr::String(s.to_string())
+    },
+}
+
+Num: i32 = {
+    r"[0-9]+" =>? <>.parse::<i32>().map_err(|e| ParseError::User {
+            error: e.to_string(),
+        })
+}
+Id: String = {
+    r"[a-zA-Z_][a-zA-Z0-9_]*" => <>.to_owned()
+}
+
+BinOpFactor: BinOp = {
+    "*" => BinOp::Mul,
+    "/" => BinOp::Div,
+}
+BinOpExpr: BinOp = {
+    "+" => BinOp::Add,
+    "-" => BinOp::Sub,
+}
+UniOp: UniOp = {
+    "-" => UniOp::Neg,
+    "&" => UniOp::Ref,
+    "*" => UniOp::Deref,
+}
