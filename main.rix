@@ -1,6 +1,7 @@
 fn main() {
-    print("Hello, Rix!")
-    print("Hello, Rix!")
-    return;
-    return 1;
+    # Comment
+    print("Hello, Rix!") # another
+    print("Hello, Rix!", 42,)
+
+    return
 }

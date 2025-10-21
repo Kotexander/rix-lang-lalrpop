@@ -3,21 +3,42 @@ use crate::ast::BinOp;
 use crate::ast::UniOp;
 use crate::ast::Item;
 use crate::ast::Instr;
+use crate::lexer::Tok;
 use lalrpop_util::ParseError;
 
-grammar;
+grammar<'input>(input: &'input str);
 
 extern {
+    type Location = usize;
     type Error = String;
+
+    enum Tok<'input> {
+        fn => Tok::Fn,
+        return => Tok::Return,
+        "(" => Tok::LParen,
+        ")" => Tok::RParen,
+        "{" => Tok::LBrace,
+        "}" => Tok::RBrace,
+        "+" => Tok::Plus,
+        "-" => Tok::Minus,
+        "*" => Tok::Asterisk,
+        "/" => Tok::Slash,
+        "&" => Tok::And,
+        "," => Tok::Comma,
+        "\n" => Tok::NewLine,
+        id => Tok::Id(<&'input str>),
+        number => Tok::Number(<&'input str>),
+        string => Tok::String(<&'input str>),
+    }
 }
 
-pub Program = (Item)*;
+pub Program = NewLines<Item>;
 
 Item: Item = {
-    "fn" <Id> "(" ")" "{" <(Instr)*> "}" => Item::Function(<>),
+    fn <Id> "(" ")" "{" ("\n")* <(<Instr> "\n"+)*> "}" => Item::Function(<>),
 }
 Instr: Instr = {
-    "return" <Expr?> ";" => Instr::Return(<>),
+    return <Expr?>  => Instr::Return(<>),
     <Id> "(" <Exprs> ")" => Instr::Call(<>),
 }
 
@@ -31,6 +52,15 @@ Exprs: Vec<Expr> = Comma<Expr>;
 
 Comma<T>: Vec<T> = {
     <mut v:(<T> ",")*> <e:T?> => match e {
+        None => v,
+        Some(e) => {
+            v.push(e);
+            v
+        }
+    }
+};
+NewLines<T>: Vec<T> = {
+    <mut v:(<T> "\n"+)*> <e:T?> => match e {
         None => v,
         Some(e) => {
             v.push(e);
@@ -57,19 +87,16 @@ Term: Expr = {
     UniOp Term => Expr::uni_op(<>),
     "(" <Expr> ")",
     Id => Expr::Variable(<>),
-    r#""([^"\\\n]|\\.)*""# => {
-        let s = &<>[1..<>.len()-1];
-        Expr::String(s.to_string())
-    },
+    string => Expr::String(<>.to_string()),
 }
 
 Num: i32 = {
-    r"[0-9]+" =>? <>.parse::<i32>().map_err(|e| ParseError::User {
+    number =>? <>.parse::<i32>().map_err(|e| ParseError::User {
             error: e.to_string(),
         })
 }
 Id: String = {
-    r"[a-zA-Z_][a-zA-Z0-9_]*" => <>.to_owned()
+    id => <>.to_owned()
 }
 
 BinOpFactor: BinOp = {
