@@ -13,8 +13,9 @@ extern {
     type Error = String;
 
     enum Tok<'input> {
-        fn => Tok::Fn,
-        return => Tok::Return,
+        "fn" => Tok::Fn,
+        "return" => Tok::Return,
+        "var" => Tok::Var,
         "(" => Tok::LParen,
         ")" => Tok::RParen,
         "{" => Tok::LBrace,
@@ -25,6 +26,7 @@ extern {
         "/" => Tok::Slash,
         "&" => Tok::And,
         "," => Tok::Comma,
+        "=" => Tok::Equal,
         "\n" => Tok::NewLine,
         id => Tok::Id(<&'input str>),
         number => Tok::Number(<&'input str>),
@@ -32,14 +34,15 @@ extern {
     }
 }
 
-pub Program = NewLines<Item>;
+pub Program = SeperatedList<Item, "\n"+>;
 
 Item: Item = {
-    fn <Id> "(" ")" "{" ("\n")* <(<Instr> "\n"+)*> "}" => Item::Function(<>),
+    "fn" <Id> "(" ")" "{" ("\n")* <(<Instr> "\n"+)*> "}" => Item::Function(<>),
 }
 Instr: Instr = {
-    return <Expr?>  => Instr::Return(<>),
-    <Id> "(" <Exprs> ")" => Instr::Call(<>),
+    "return" <Expr?>  => Instr::Return(<>),
+    "var" <Id> "=" <Expr> => Instr::VarInit(<>),
+    <Expr> => Instr::Expr(<>),
 }
 
 Tier<Op, NextTier> = {
@@ -48,10 +51,10 @@ Tier<Op, NextTier> = {
 }
 
 Expr = Tier<BinOpExpr, Factor>;
-Exprs: Vec<Expr> = Comma<Expr>;
+Exprs: Vec<Expr> = SeperatedList<Expr, ",">;
 
-Comma<T>: Vec<T> = {
-    <mut v:(<T> ",")*> <e:T?> => match e {
+SeperatedList<T, Sep>: Vec<T> = {
+    <mut v:(<T> Sep)*> <e:T?> => match e {
         None => v,
         Some(e) => {
             v.push(e);
@@ -59,32 +62,13 @@ Comma<T>: Vec<T> = {
         }
     }
 };
-NewLines<T>: Vec<T> = {
-    <mut v:(<T> "\n"+)*> <e:T?> => match e {
-        None => v,
-        Some(e) => {
-            v.push(e);
-            v
-        }
-    }
-};
-
 
 Factor = Tier<BinOpFactor, Term>;
-
-// pub Expr = {
-//     Expr ExprOp Factor => Expr::bin_op(<>),
-//     Factor,
-// }
-//
-// Factor = {
-//     Factor FactorOp Term => Expr::bin_op(<>),
-//     Term,
-// }
 
 Term: Expr = {
     Num => Expr::Number(<>),
     UniOp Term => Expr::uni_op(<>),
+    <Id> "(" <Exprs> ")" => Expr::Call(<>),
     "(" <Expr> ")",
     Id => Expr::Variable(<>),
     string => Expr::String(<>.to_string()),

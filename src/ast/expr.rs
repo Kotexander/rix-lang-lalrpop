@@ -1,6 +1,7 @@
 #[derive(Debug, Clone)]
 pub enum Expr {
     Number(i32),
+    Call(String, Vec<Expr>),
     BinOp(Box<Expr>, BinOp, Box<Expr>),
     UniOp(UniOp, Box<Expr>),
     String(String),
@@ -18,6 +19,10 @@ impl std::fmt::Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Expr::Number(n) => write!(f, "{}", n),
+            Expr::Call(name, exprs) => {
+                let exprs_str: Vec<String> = exprs.iter().map(|e| format!("{}", e)).collect();
+                write!(f, "{}({})", name, exprs_str.join(", "))
+            }
             Expr::BinOp(left, op, right) => write!(f, "({} {} {})", left, op, right),
             Expr::UniOp(op, expr) => write!(f, "({}{})", op, expr),
             Expr::String(s) => write!(f, "\"{}\"", s),

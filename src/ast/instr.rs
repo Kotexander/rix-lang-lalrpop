@@ -2,6 +2,7 @@ use super::Expr;
 
 #[derive(Debug, Clone)]
 pub enum Instr {
-    Call(String, Vec<Expr>),
+    VarInit(String, Expr),
     Return(Option<Expr>),
+    Expr(Expr),
 }

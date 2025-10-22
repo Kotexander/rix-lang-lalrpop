@@ -10,6 +10,7 @@ pub enum Tok<'input> {
     Asterisk,
     And,
     Slash,
+    Equal,
     LParen,
     RParen,
     LBrace,
@@ -19,6 +20,7 @@ pub enum Tok<'input> {
 
     Fn,
     Return,
+    Var,
 }
 pub struct Lexer<'input> {
     chars: Peekable<CharIndices<'input>>,
@@ -87,6 +89,7 @@ impl<'input> Iterator for Lexer<'input> {
                 '{' => return Some(Ok((i, Tok::LBrace, i + 1))),
                 '}' => return Some(Ok((i, Tok::RBrace, i + 1))),
                 ',' => return Some(Ok((i, Tok::Comma, i + 1))),
+                '=' => return Some(Ok((i, Tok::Equal, i + 1))),
                 '\n' => return Some(Ok((i, Tok::NewLine, i + 1))),
 
                 '0'..='9' => {
@@ -123,6 +126,7 @@ impl<'input> Iterator for Lexer<'input> {
                     match id {
                         "fn" => return Some(Ok((start, Tok::Fn, end))),
                         "return" => return Some(Ok((start, Tok::Return, end))),
+                        "var" => return Some(Ok((start, Tok::Var, end))),
                         _ => return Some(Ok((start, Tok::Id(id), end))),
                     }
                 }

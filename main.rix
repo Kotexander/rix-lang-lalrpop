@@ -1,7 +1,10 @@
 fn main() {
+    var a = 10
+    var b = 20
+    var c = a + b * 2 - (a / 5)
+
     # Comment
-    print("Hello, Rix!") # another
-    print("Hello, Rix!", 42,)
+    print("Hello, Rix!", (c+1*2)*2) # another comment
 
     return
 }
