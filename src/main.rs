@@ -3,6 +3,7 @@ mod interpreter;
 mod ir;
 mod lexer;
 
+use crate::ir::op_constant_fold;
 use lalrpop_util::lalrpop_mod;
 
 lalrpop_mod!(grammar);
@@ -17,7 +18,12 @@ fn main() {
             for item in &ast {
                 match item {
                     ast::Item::Function(_name, body) => {
-                        let ir = ir::generate(body);
+                        let mut ir = ir::generate(body);
+                        for i in &ir {
+                            println!("{i}");
+                        }
+                        op_constant_fold(&mut ir);
+                        println!("\nAfter optimization:");
                         for i in ir {
                             println!("{i}");
                         }

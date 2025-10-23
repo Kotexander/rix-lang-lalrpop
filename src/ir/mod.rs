@@ -1,6 +1,7 @@
 use crate::ast;
+use std::collections::HashMap;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Register(String);
 impl From<String> for Register {
     fn from(s: String) -> Self {
@@ -39,14 +40,28 @@ impl From<Register> for Value {
     }
 }
 
+pub enum BinOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+}
+impl std::fmt::Display for BinOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BinOp::Add => write!(f, "add"),
+            BinOp::Sub => write!(f, "sub"),
+            BinOp::Mul => write!(f, "mul"),
+            BinOp::Div => write!(f, "div"),
+        }
+    }
+}
+
 pub enum InstrOp {
     Stack,
     Load(Register),
 
-    Add(Value, Value),
-    Sub(Value, Value),
-    Mul(Value, Value),
-    Div(Value, Value),
+    Op(BinOp, Value, Value),
     Neg(Register),
 
     Call(String, Vec<Value>),
@@ -55,12 +70,8 @@ impl std::fmt::Display for InstrOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             InstrOp::Stack => write!(f, "stack"),
-            // InstrOp::Store(reg, value) => write!(f, "store {}, {}", reg, value),
             InstrOp::Load(name) => write!(f, "load {}", name),
-            InstrOp::Add(l, r) => write!(f, "add {}, {}", l, r),
-            InstrOp::Sub(l, r) => write!(f, "sub {}, {}", l, r),
-            InstrOp::Mul(l, r) => write!(f, "mul {}, {}", l, r),
-            InstrOp::Div(l, r) => write!(f, "div {}, {}", l, r),
+            InstrOp::Op(op, l, r) => write!(f, "{} {}, {}", op, l, r),
             InstrOp::Neg(v) => write!(f, "neg {}", v),
             InstrOp::Call(name, args) => {
                 let args_str: Vec<String> = args.iter().map(|a| format!("{}", a)).collect();
@@ -161,22 +172,16 @@ fn generate_expr(expr: &ast::Expr, module: &mut ModuleBuilder) -> Value {
         ast::Expr::BinOp(l, op, r) => {
             let l_val = generate_expr(l, module);
             let r_val = generate_expr(r, module);
-            // // check if both are numbers and fold them
-            // if let (Value::Number(l_num), Value::Number(r_num)) = (&l_val, &r_val) {
-            //     return match op {
-            //         ast::BinOp::Add => Value::Number(l_num + r_num),
-            //         ast::BinOp::Sub => Value::Number(l_num - r_num),
-            //         ast::BinOp::Mul => Value::Number(l_num * r_num),
-            //         ast::BinOp::Div => Value::Number(l_num / r_num),
-            //     };
-            // }
+
             let instr_op = match op {
-                ast::BinOp::Add => InstrOp::Add(l_val, r_val),
-                ast::BinOp::Sub => InstrOp::Sub(l_val, r_val),
-                ast::BinOp::Mul => InstrOp::Mul(l_val, r_val),
-                ast::BinOp::Div => InstrOp::Div(l_val, r_val),
+                ast::BinOp::Add => BinOp::Add,
+                ast::BinOp::Sub => BinOp::Sub,
+                ast::BinOp::Mul => BinOp::Mul,
+                ast::BinOp::Div => BinOp::Div,
             };
-            module.push_assign(instr_op).into()
+            module
+                .push_assign(InstrOp::Op(instr_op, l_val, r_val))
+                .into()
         }
         ast::Expr::UniOp(op, expr) => {
             let val = generate_expr(expr, module);
@@ -193,5 +198,104 @@ fn generate_expr(expr: &ast::Expr, module: &mut ModuleBuilder) -> Value {
             .push_assign(InstrOp::Load("string_todo".into()))
             .into(),
         ast::Expr::Variable(v) => module.push_assign(InstrOp::Load(v.as_str().into())).into(),
+    }
+}
+
+pub fn op_constant_fold(ir: &mut Vec<Instr>) {
+    let mut values: HashMap<Register, Option<i32>> = HashMap::new();
+    let mut i = 0;
+    while i < ir.len() {
+        match &mut ir[i] {
+            Instr::Assign { reg, op } => match op {
+                InstrOp::Stack => {
+                    values.insert(reg.clone(), None);
+                }
+                InstrOp::Load(register) => {
+                    let v = values[register];
+                    values.insert(reg.clone(), v);
+                    if v.is_some() {
+                        ir.remove(i);
+                        continue;
+                    }
+                    // values.insert(reg.clone(), None);
+                }
+                InstrOp::Op(op, l, r) => {
+                    let l_val = match l {
+                        Value::Number(n) => Some(*n),
+                        Value::Register(reg) => match values[reg] {
+                            Some(n) => {
+                                *l = Value::Number(n);
+                                Some(n)
+                            }
+                            None => None,
+                        },
+                        Value::Void => panic!(),
+                    };
+                    let r_val = match r {
+                        Value::Number(n) => Some(*n),
+                        Value::Register(reg) => match values[reg] {
+                            Some(n) => {
+                                *r = Value::Number(n);
+                                Some(n)
+                            }
+                            None => None,
+                        },
+                        Value::Void => panic!(),
+                    };
+                    match (l_val, r_val) {
+                        (Some(lv), Some(rv)) => {
+                            let result = match op {
+                                BinOp::Add => lv + rv,
+                                BinOp::Sub => lv - rv,
+                                BinOp::Mul => lv * rv,
+                                BinOp::Div => lv / rv,
+                            };
+                            values.insert(reg.clone(), Some(result));
+                            ir.remove(i);
+                            continue;
+                        }
+                        _ => {
+                            values.insert(reg.clone(), None);
+                        }
+                    }
+                }
+                InstrOp::Neg(neg) => match values[neg] {
+                    Some(n) => {
+                        values.insert(reg.clone(), Some(-n));
+                        ir.remove(i);
+                        continue;
+                    }
+                    None => {
+                        values.insert(reg.clone(), None);
+                    }
+                },
+                InstrOp::Call(_, _) => {
+                    values.insert(reg.clone(), None);
+                }
+            },
+            Instr::Store(reg, value) => match value {
+                Value::Number(n) => {
+                    values.insert(reg.clone(), Some(*n));
+                }
+                Value::Register(register) => {
+                    let v = values[register];
+                    values.insert(reg.clone(), v);
+                    if let Some(n) = v {
+                        *value = Value::Number(n)
+                    }
+                }
+                Value::Void => panic!(),
+            },
+            Instr::Ret(v) => {
+                if let Value::Register(register) = v {
+                    let val = values[register];
+                    if let Some(n) = val {
+                        *v = Value::Number(n)
+                    }
+                }
+                return;
+            }
+        }
+        i += 1;
     }
 }

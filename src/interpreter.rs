@@ -68,7 +68,7 @@ fn eval_expr(expr: &Expr, scope: &Scope) -> Result<Value, String> {
         Expr::Call(func_name, args) => match func_name.as_str() {
             "print" => {
                 for arg in args {
-                    let arg = eval_expr(arg, &scope);
+                    let arg = eval_expr(arg, scope);
                     let arg = match arg {
                         Ok(v) => v,
                         Err(e) => {
