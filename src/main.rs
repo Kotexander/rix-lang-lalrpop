@@ -1,5 +1,6 @@
 mod ast;
 mod interpreter;
+mod ir;
 mod lexer;
 
 use lalrpop_util::lalrpop_mod;
@@ -13,6 +14,16 @@ fn main() {
     match ast {
         Ok(ast) => {
             println!("{ast:#?}");
+            for item in &ast {
+                match item {
+                    ast::Item::Function(_name, body) => {
+                        let ir = ir::generate(body);
+                        for i in ir {
+                            println!("{i}");
+                        }
+                    }
+                }
+            }
             interpreter::run(&ast);
         }
         Err(e) => match e {

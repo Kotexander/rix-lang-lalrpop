@@ -111,7 +111,10 @@ pub fn run(ast: &[Item]) {
                             }
                         },
                         Instr::Return(ret_expr) => {
-                            println!("Function {name:?} returned: {ret_expr:?}");
+                            println!(
+                                "Function {name:?} returned: {:?}",
+                                ret_expr.as_ref().map(|e| eval_expr(e, &scope))
+                            );
                             break;
                         }
                         Instr::Expr(expr) => match eval_expr(expr, &scope) {
