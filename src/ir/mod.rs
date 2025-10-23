@@ -1,8 +1,14 @@
 use crate::ast;
-use std::collections::HashMap;
+use std::{collections::HashMap, ops::Deref};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Register(String);
+impl Deref for Register {
+    type Target = str;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 impl From<String> for Register {
     fn from(s: String) -> Self {
         Register(s)
@@ -23,14 +29,12 @@ impl std::fmt::Display for Register {
 pub enum Value {
     Number(i32),
     Register(Register),
-    Void,
 }
 impl std::fmt::Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Value::Number(n) => write!(f, "{}", n),
             Value::Register(r) => write!(f, "{}", r),
-            Value::Void => write!(f, "void"),
         }
     }
 }
@@ -84,14 +88,15 @@ impl std::fmt::Display for InstrOp {
 pub enum Instr {
     Assign { reg: Register, op: InstrOp },
     Store(Register, Value),
-    Ret(Value),
+    Ret(Option<Value>),
 }
 impl std::fmt::Display for Instr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Instr::Assign { reg, op } => write!(f, "{} = {}", reg, op),
             Instr::Store(reg, value) => write!(f, "store {}, {}", reg, value),
-            Instr::Ret(value) => write!(f, "ret {}", value),
+            Instr::Ret(Some(value)) => write!(f, "ret {}", value),
+            Instr::Ret(None) => write!(f, "ret void"),
         }
     }
 }
@@ -108,7 +113,7 @@ impl ModuleBuilder {
         }
     }
     fn push_assign(&mut self, instr: InstrOp) -> Register {
-        let reg: Register = format!("{}", self.temp_reg_counter).into();
+        let reg: Register = format!("t.{}", self.temp_reg_counter).into();
         let instr = Instr::Assign {
             reg: reg.clone(),
             op: instr,
@@ -117,7 +122,7 @@ impl ModuleBuilder {
         self.instructions.push(instr);
         reg
     }
-    fn push_ret(&mut self, value: Value) {
+    fn push_ret(&mut self, value: Option<Value>) {
         let instr = Instr::Ret(value);
         self.instructions.push(instr);
     }
@@ -150,12 +155,8 @@ fn generate_instr(instr: &ast::Instr, module: &mut ModuleBuilder) {
             module.push_store(reg, value);
         }
         ast::Instr::Return(expr) => {
-            if let Some(expr) = expr {
-                let value = generate_expr(expr, module);
-                module.push_ret(value);
-            } else {
-                module.push_ret(Value::Void);
-            }
+            let v = expr.as_ref().map(|e| generate_expr(e, module));
+            module.push_ret(v);
         }
         ast::Instr::Expr(expr) => {
             generate_expr(expr, module);
@@ -189,7 +190,6 @@ fn generate_expr(expr: &ast::Expr, module: &mut ModuleBuilder) -> Value {
                 ast::UniOp::Neg => match val {
                     Value::Number(n) => Value::Number(-n),
                     Value::Register(reg) => module.push_assign(InstrOp::Neg(reg)).into(),
-                    Value::Void => todo!(),
                 },
                 _ => unimplemented!(),
             }
@@ -229,7 +229,6 @@ pub fn op_constant_fold(ir: &mut Vec<Instr>) {
                             }
                             None => None,
                         },
-                        Value::Void => panic!(),
                     };
                     let r_val = match r {
                         Value::Number(n) => Some(*n),
@@ -240,7 +239,6 @@ pub fn op_constant_fold(ir: &mut Vec<Instr>) {
                             }
                             None => None,
                         },
-                        Value::Void => panic!(),
                     };
                     match (l_val, r_val) {
                         (Some(lv), Some(rv)) => {
@@ -284,9 +282,8 @@ pub fn op_constant_fold(ir: &mut Vec<Instr>) {
                         *value = Value::Number(n)
                     }
                 }
-                Value::Void => panic!(),
             },
-            Instr::Ret(v) => {
+            Instr::Ret(Some(v)) => {
                 if let Value::Register(register) = v {
                     let val = values[register];
                     if let Some(n) = val {
@@ -295,6 +292,7 @@ pub fn op_constant_fold(ir: &mut Vec<Instr>) {
                 }
                 return;
             }
+            Instr::Ret(None) => return,
         }
         i += 1;
     }
