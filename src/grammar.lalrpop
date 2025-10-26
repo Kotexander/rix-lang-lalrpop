@@ -16,6 +16,11 @@ extern {
         "fn" => Tok::Fn,
         "return" => Tok::Return,
         "var" => Tok::Var,
+        "for" => Tok::For,
+        "in" => Tok::In,
+        "if" => Tok::If,
+        "else" => Tok::Else,
+
         "(" => Tok::LParen,
         ")" => Tok::RParen,
         "{" => Tok::LBrace,
@@ -24,7 +29,12 @@ extern {
         "-" => Tok::Minus,
         "*" => Tok::Asterisk,
         "/" => Tok::Slash,
-        "&" => Tok::And,
+        "&" => Tok::Apersand,
+        "%" => Tok::Percent,
+        ".." => Tok::DotDot,
+        "." => Tok::Dot,
+        "==" => Tok::EqualEqual,
+        "and" => Tok::And,
         "," => Tok::Comma,
         "=" => Tok::Equal,
         "\n" => Tok::NewLine,
@@ -34,36 +44,32 @@ extern {
     }
 }
 
-pub Program = SeperatedList<Item, "\n"+>;
+pub Program = ("\n")* <SeperatedList<Item, "\n"+>>;
 
 Item: Item = {
-    "fn" <Id> "(" ")" "{" ("\n")* <(<Instr> "\n"+)*> "}" => Item::Function(<>),
+    "fn" <Id> "(" ")" <Block> => Item::Function(<>),
 }
 Instr: Instr = {
     "return" <Expr?>  => Instr::Return(<>),
     "var" <Id> "=" <Expr> => Instr::VarInit(<>),
+    "for" <Id> "in" <Expr> ".." <Expr> <Block> => Instr::For(<>),
+    "if" <Expr> <Block> <("else" "if" <Expr> <Block>)*> <("else" <Block>)?> => Instr::If(<>),
     <Expr> => Instr::Expr(<>),
 }
 
-Tier<Op, NextTier> = {
-    Tier<Op, NextTier> Op NextTier => Expr::bin_op(<>),
-    NextTier,
+Block: Vec<Instr> = {
+    "{" ("\n")+ <(<Instr> "\n"+)*> "}" => <>
 }
 
-Expr = Tier<BinOpExpr, Factor>;
+
+// Lowest precedence
+Expr = Tier<BinOpBoolean, Expr_>;
+Expr_ = Tier<BinOpComparison, Expr__>;
+Expr__ = Tier<BinOpExpr, Expr___>;
+Expr___ = Tier<BinOpFactor, Term>;
+// Highest precedence
+
 Exprs: Vec<Expr> = SeperatedList<Expr, ",">;
-
-SeperatedList<T, Sep>: Vec<T> = {
-    <mut v:(<T> Sep)*> <e:T?> => match e {
-        None => v,
-        Some(e) => {
-            v.push(e);
-            v
-        }
-    }
-};
-
-Factor = Tier<BinOpFactor, Term>;
 
 Term: Expr = {
     Num => Expr::Number(<>),
@@ -86,13 +92,36 @@ Id: String = {
 BinOpFactor: BinOp = {
     "*" => BinOp::Mul,
     "/" => BinOp::Div,
+    "%" => BinOp::Mod,
 }
 BinOpExpr: BinOp = {
     "+" => BinOp::Add,
     "-" => BinOp::Sub,
 }
+BinOpBoolean: BinOp = {
+    "and" => BinOp::And,
+}
+BinOpComparison: BinOp = {
+    "==" => BinOp::Eq,
+}
 UniOp: UniOp = {
     "-" => UniOp::Neg,
     "&" => UniOp::Ref,
     "*" => UniOp::Deref,
+}
+
+
+SeperatedList<T, Sep>: Vec<T> = {
+    <mut v:(<T> Sep)*> <e:T?> => match e {
+        None => v,
+        Some(e) => {
+            v.push(e);
+            v
+        }
+    }
+}
+
+Tier<Op, NextTier> = {
+    Tier<Op, NextTier> Op NextTier => Expr::bin_op(<>),
+    NextTier,
 }
