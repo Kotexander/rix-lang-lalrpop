@@ -6,6 +6,10 @@ pub enum InstrKind {
         name: String,
         expr: Expr,
     },
+    VarAssign {
+        name: String,
+        expr: Expr,
+    },
     Return(Option<Expr>),
     Expr(Expr),
 
@@ -39,6 +43,7 @@ impl InstrKind {
         }
         match self {
             InstrKind::VarInit { name, expr } => write!(f, "var {} = {}", name, expr.kind),
+            InstrKind::VarAssign { name, expr } => write!(f, "{} = {}", name, expr.kind),
             InstrKind::Return(Some(expr)) => write!(f, "return {}", expr.kind),
             InstrKind::Return(None) => write!(f, "return"),
             InstrKind::Expr(expr) => write!(f, "{}", expr.kind),

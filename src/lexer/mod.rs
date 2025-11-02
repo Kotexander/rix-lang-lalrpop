@@ -5,6 +5,7 @@ pub enum Tok<'input> {
     Number(&'input str),
     String(&'input str),
     NewLine,
+    Colon,
     Plus,
     Minus,
     Asterisk,
@@ -27,6 +28,7 @@ pub enum Tok<'input> {
     Var,
     For,
     And,
+    Or,
     In,
     If,
     Else,
@@ -100,6 +102,7 @@ impl<'input> Iterator for Lexer<'input> {
                 '}' => return Some(Ok((i, Tok::RBrace, i + ch.len_utf8()))),
                 ',' => return Some(Ok((i, Tok::Comma, i + ch.len_utf8()))),
                 '\n' => return Some(Ok((i, Tok::NewLine, i + ch.len_utf8()))),
+                ':' => return Some(Ok((i, Tok::Colon, i + ch.len_utf8()))),
                 '.' => {
                     if let Some((i, ch)) = self.chars.peek()
                         && *ch == '.'
@@ -158,13 +161,14 @@ impl<'input> Iterator for Lexer<'input> {
                         "var" => return Some(Ok((start, Tok::Var, end))),
                         "for" => return Some(Ok((start, Tok::For, end))),
                         "and" => return Some(Ok((start, Tok::And, end))),
+                        "or" => return Some(Ok((start, Tok::Or, end))),
                         "in" => return Some(Ok((start, Tok::In, end))),
                         "if" => return Some(Ok((start, Tok::If, end))),
                         "else" => return Some(Ok((start, Tok::Else, end))),
                         _ => return Some(Ok((start, Tok::Id(id), end))),
                     }
                 }
-                _ => return Some(Err(format!("Unexpected character: {}", ch))),
+                _ => return Some(Err(format!("unknown character: '{}'", ch))),
             }
         }
     }

@@ -39,10 +39,10 @@ impl<'ctx> CodeGen<'ctx> {
                 .void_type()
                 .fn_type(&[ctx.ptr_type(AddressSpace::default()).into()], true);
             let fn_value = module.add_function("printf", fn_type, None);
-            fn_value.add_attribute(
-                AttributeLoc::Function,
-                ctx.create_enum_attribute(Attribute::get_named_enum_kind_id("nounwind"), 0),
-            );
+            // fn_value.add_attribute(
+            //     AttributeLoc::Function,
+            //     ctx.create_enum_attribute(Attribute::get_named_enum_kind_id("nounwind"), 0),
+            // );
             funcs.insert("printf".to_owned(), fn_value);
         }
 
@@ -70,10 +70,18 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-    pub fn generate(&mut self, fn_name: &str, ast: &[Instr]) {
-        let fun = self
-            .module
-            .add_function(fn_name, self.ctx.void_type().fn_type(&[], false), None);
+    pub fn generate(&mut self, fn_name: &str, args: &[(String, String)], ast: &[Instr]) {
+        let fn_args: Vec<_> = args
+            .iter()
+            .map(|(_, typ)| match typ.as_str() {
+                "i32" => self.ctx.i32_type().into(),
+                _ => panic!("unsupported type: '{typ}'"),
+            })
+            .collect();
+
+        let fun =
+            self.module
+                .add_function(fn_name, self.ctx.i32_type().fn_type(&fn_args, false), None);
         fun.add_attribute(
             AttributeLoc::Function,
             self.ctx
@@ -82,10 +90,24 @@ impl<'ctx> CodeGen<'ctx> {
         self.funcs.insert(fn_name.to_owned(), fun);
 
         let mut map = HashMap::new();
+        let blk = self.ctx.append_basic_block(fun, "args.init");
+        self.builder.position_at_end(blk);
+        for (i, (arg, _)) in args.iter().enumerate() {
+            let ptr = self
+                .builder
+                .build_alloca(self.ctx.i32_type(), &arg)
+                .unwrap();
+            self.builder
+                .build_store(ptr, fun.get_nth_param(i as u32).unwrap())
+                .unwrap();
+            map.insert(arg.clone(), ptr.as_basic_value_enum());
+        }
 
-        self.generate_block(fun, "entry", ast, &mut map);
+        let (entry, _) = self.generate_block(fun, "entry", ast, &mut map);
+        // self.builder.build_return(None).unwrap();
 
-        self.builder.build_return(None).unwrap();
+        self.builder.position_at_end(blk);
+        self.builder.build_unconditional_branch(entry).unwrap();
     }
 
     fn generate_block(
@@ -110,6 +132,11 @@ impl<'ctx> CodeGen<'ctx> {
                     let val = generate_expr(&expr.kind, map, self).unwrap();
                     self.builder.build_store(ptr, val).unwrap();
                     map.insert(name.clone(), ptr.as_basic_value_enum());
+                }
+                InstrKind::VarAssign { name, expr } => {
+                    let ptr = map[name].clone().into_pointer_value();
+                    let val = generate_expr(&expr.kind, map, self).unwrap();
+                    self.builder.build_store(ptr, val).unwrap();
                 }
                 InstrKind::Return(expr) => {
                     if let Some(expr) = expr {
@@ -274,8 +301,8 @@ impl<'ctx> CodeGen<'ctx> {
         ptr
     }
 
-    pub fn print_ir(&self) {
-        self.module.print_to_stderr();
+    pub fn save_ir(&mut self, path: impl AsRef<Path>) {
+        self.module.print_to_file(path).unwrap()
     }
 
     pub fn optimize(&self) {
@@ -348,6 +375,7 @@ fn generate_expr<'a>(
                         .build_int_compare(IntPredicate::EQ, l, r, "")
                         .unwrap(),
                     BinOp::And => cg.builder.build_and(l, r, "").unwrap(),
+                    BinOp::Or => cg.builder.build_or(l, r, "").unwrap(),
                 }
                 .as_basic_value_enum(),
             )

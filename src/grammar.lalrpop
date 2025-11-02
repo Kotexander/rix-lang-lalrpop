@@ -41,7 +41,9 @@ extern {
         "=" => Tok::Equal,
         "==" => Tok::EqualEqual,
         "and" => Tok::And,
+        "or" => Tok::Or,
         "\n" => Tok::NewLine,
+        ":" => Tok::Colon,
         id => Tok::Id(<&'input str>),
         number => Tok::Number(<&'input str>),
         string => Tok::String(<&'input str>),
@@ -51,14 +53,17 @@ extern {
 pub Program = ("\n")* <SeperatedList<Item, "\n"+>>;
 
 Item: Item = {
-    "fn" <Id> "(" ")" <Block> => Item::Function(<>),
+    "fn" <name: Id> "(" <args: SeperatedList<Arg,",">> ")" <body: Block> => Item::Function{<>},
     // ! => {errors.push(<>); Item::Error},
 }
+
+Arg = <Id> ":" <Id>;
 
 Instr: Instr = SpannedInstr<InstrKind>;
 InstrKind: InstrKind = {
     "return" <Expr?> => InstrKind::Return(<>),
     "var" <name: Id> "=" <expr: Expr> => InstrKind::VarInit{<>},
+    <name: Id> "=" <expr: Expr> => InstrKind::VarAssign{<>},
     "for" <var: Id> "in" <start: Expr> ".." <end: Expr> <body: Block> => InstrKind::For{<>},
     "if" <cond: Expr> <then: Block> <elifs: ("else" "if" <Expr> <Block>)*> <els: ("else" <Block>)?> => InstrKind::If{<>},
     <Expr> => InstrKind::Expr(<>),
@@ -107,6 +112,7 @@ BinOpExpr: BinOp = {
 }
 BinOpBoolean: BinOp = {
     "and" => BinOp::And,
+    "or" => BinOp::Or,
 }
 BinOpComparison: BinOp = {
     "==" => BinOp::Eq,

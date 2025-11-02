@@ -61,6 +61,7 @@ pub enum BinOp {
     Mod,
     Eq,
     And,
+    Or,
 }
 impl std::fmt::Display for BinOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -72,6 +73,7 @@ impl std::fmt::Display for BinOp {
             BinOp::Mod => "%",
             BinOp::Eq => "==",
             BinOp::And => "and",
+            BinOp::Or => "or",
         };
         write!(f, "{}", op_str)
     }
