@@ -1,32 +1,53 @@
+use super::Span;
+
 #[derive(Debug, Clone)]
-pub enum Expr {
+pub enum ExprKind {
     Number(i32),
-    Call(String, Vec<Expr>),
-    BinOp(Box<Expr>, BinOp, Box<Expr>),
-    UniOp(UniOp, Box<Expr>),
     String(String),
+
     Variable(String),
+    Call {
+        name: String,
+        args: Vec<Expr>,
+    },
+    BinOp {
+        op: BinOp,
+        l: Box<Expr>,
+        r: Box<Expr>,
+    },
+    UniOp {
+        op: UniOp,
+        expr: Box<Expr>,
+    },
+    // Error,
 }
-impl Expr {
-    pub fn bin_op(left: Expr, op: BinOp, right: Expr) -> Self {
-        Expr::BinOp(Box::new(left), op, Box::new(right))
-    }
-    pub fn uni_op(op: UniOp, expr: Expr) -> Self {
-        Expr::UniOp(op, Box::new(expr))
-    }
-}
-impl std::fmt::Display for Expr {
+impl std::fmt::Display for ExprKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Expr::Number(n) => write!(f, "{}", n),
-            Expr::Call(name, exprs) => {
-                let exprs_str: Vec<String> = exprs.iter().map(|e| format!("{}", e)).collect();
-                write!(f, "{}({})", name, exprs_str.join(", "))
+            ExprKind::Number(n) => write!(f, "{}", n),
+            ExprKind::Call { name, args } => {
+                let args: Vec<String> = args.iter().map(|e| format!("{}", e.kind)).collect();
+                write!(f, "{}({})", name, args.join(", "))
             }
-            Expr::BinOp(left, op, right) => write!(f, "({} {} {})", left, op, right),
-            Expr::UniOp(op, expr) => write!(f, "({}{})", op, expr),
-            Expr::String(s) => write!(f, "\"{}\"", s),
-            Expr::Variable(name) => write!(f, "{}", name),
+            ExprKind::BinOp { op, l, r } => write!(f, "({} {} {})", l.kind, op, r.kind),
+            ExprKind::UniOp { op, expr } => write!(f, "({}{})", op, expr.kind),
+            ExprKind::String(s) => write!(f, "\"{}\"", s),
+            ExprKind::Variable(name) => write!(f, "{}", name),
+            // ExprKind::Error => write!(f, "<error>"),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Expr {
+    pub kind: ExprKind,
+    pub span: Span,
+}
+impl Expr {
+    pub fn new(start: usize, typ: ExprKind, end: usize) -> Self {
+        Self {
+            kind: typ,
+            span: Span { start, end },
         }
     }
 }

@@ -1,27 +1,85 @@
 mod ast;
-mod interpreter;
 mod lexer;
 mod llvm;
 
-use lalrpop_util::lalrpop_mod;
+use codespan_reporting::{
+    diagnostic::{Diagnostic, Label},
+    files::SimpleFiles,
+    term::{
+        self,
+        termcolor::{ColorChoice, StandardStream},
+    },
+};
+use lalrpop_util::{ParseError, lalrpop_mod};
 
-lalrpop_mod!(grammar);
+use crate::lexer::Tok;
+
+lalrpop_mod!(
+    #[allow(clippy::ptr_arg)]
+    grammar
+);
+
+fn make_error(error: &ParseError<usize, Tok, String>, file: usize) -> Diagnostic<usize> {
+    match error {
+        ParseError::InvalidToken { location } => {
+            let l = *location;
+            Diagnostic::error()
+                .with_message("unexpected token")
+                .with_label(Label::primary(file, l..l))
+        }
+        ParseError::UnrecognizedEof { location, expected } => {
+            let l = *location;
+            let expected_str = expected.join(", ");
+            Diagnostic::error()
+                .with_message("unexpected end of file")
+                .with_label(Label::primary(file, l..l))
+                .with_note(format!("expected one of: {}", expected_str))
+        }
+        ParseError::UnrecognizedToken { token, expected } => {
+            let (start, _tok, end) = token;
+            let s = *start;
+            let e = *end;
+            let expected_str = expected.join(", ");
+            Diagnostic::error()
+                .with_message("unexpected token")
+                .with_label(Label::primary(file, s..e))
+                .with_note(format!("expected one of: {}", expected_str))
+        }
+        ParseError::ExtraToken { token } => {
+            let (start, _, end) = token;
+            let s = *start;
+            let e = *end;
+            Diagnostic::error()
+                .with_message("extra token")
+                .with_label(Label::primary(file, s..e))
+        }
+        ParseError::User { error } => Diagnostic::error().with_message(error),
+    }
+}
 
 fn main() {
     let llvm_ctx = llvm::initialize_llvm();
-
     let input = include_str!("../main.rix");
-    let ast = grammar::ProgramParser::new().parse(input, lexer::Lexer::new(input));
+    // let file = SimpleFile::new("main.rix", input);
+
+    let mut files = SimpleFiles::new();
+    let file = files.add("main.rix", input);
+
+    let mut writer = StandardStream::stderr(ColorChoice::Auto);
+    let config = term::Config::default();
+
+    let mut errors = Vec::new();
+    let ast = grammar::ProgramParser::new().parse(input, &mut errors, lexer::Lexer::new(input));
+
     match ast {
-        Ok(ast) => {
+        Ok(ast) if errors.is_empty() => {
             // println!("{ast:#?}");
+
             for item in &ast {
                 println!("{item}");
             }
-            interpreter::run(&ast);
-            println!();
 
-            let mut code_gen = llvm::CodeGen::new("rix_module", &llvm_ctx);
+            let mut code_gen = llvm::CodeGen::new("main.rix", &llvm_ctx);
             for item in &ast {
                 match item {
                     ast::Item::Function(name, block) => {
@@ -34,28 +92,19 @@ fn main() {
             code_gen.print_ir();
             code_gen.generate_object_file("rix.o");
         }
-        Err(e) => match e {
-            lalrpop_util::ParseError::InvalidToken { location } => {
-                println!("Invalid token at {location}");
+        Err(e) => {
+            term::emit_to_write_style(&mut writer, &config, &files, &make_error(&e, file)).unwrap()
+        }
+        Ok(_) => {
+            for error in &errors {
+                term::emit_to_write_style(
+                    &mut writer,
+                    &config,
+                    &files,
+                    &make_error(&error.error, file),
+                )
+                .unwrap();
             }
-            lalrpop_util::ParseError::UnrecognizedEof { location, expected } => {
-                print!("Unexpected token at {location}, expected: [");
-                for exp in expected {
-                    print!("{exp} ");
-                }
-                println!("]")
-            }
-            lalrpop_util::ParseError::UnrecognizedToken { token, expected } => {
-                print!("Unexpected token: {token:?}, expected: [");
-                for exp in expected {
-                    print!("{exp}, ");
-                }
-                println!("]")
-            }
-            lalrpop_util::ParseError::ExtraToken { token } => {
-                println!("Unexpected token: {token:?}")
-            }
-            lalrpop_util::ParseError::User { error } => println!("Error: {error}"),
-        },
+        }
     }
 }

@@ -1,4 +1,10 @@
-run:
+run: build
+	./rix
+
+build:
 	cargo run
 	gcc -o rix rix.o
-	./rix
+
+dump:
+	cargo run
+	readelf -a rix.o

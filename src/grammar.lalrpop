@@ -1,12 +1,16 @@
+use crate::ast::ExprKind;
 use crate::ast::Expr;
 use crate::ast::BinOp;
 use crate::ast::UniOp;
 use crate::ast::Item;
+use crate::ast::InstrKind;
 use crate::ast::Instr;
 use crate::lexer::Tok;
 use lalrpop_util::ParseError;
+use lalrpop_util::ErrorRecovery;
 
-grammar<'input>(input: &'input str);
+grammar<'input, 'err>(input: &'input str,
+                      errors: &'err mut Vec<ErrorRecovery<usize, Tok<'input>, String>>);
 
 extern {
     type Location = usize;
@@ -31,12 +35,12 @@ extern {
         "/" => Tok::Slash,
         "&" => Tok::Apersand,
         "%" => Tok::Percent,
-        ".." => Tok::DotDot,
         "." => Tok::Dot,
-        "==" => Tok::EqualEqual,
-        "and" => Tok::And,
+        ".." => Tok::DotDot,
         "," => Tok::Comma,
         "=" => Tok::Equal,
+        "==" => Tok::EqualEqual,
+        "and" => Tok::And,
         "\n" => Tok::NewLine,
         id => Tok::Id(<&'input str>),
         number => Tok::Number(<&'input str>),
@@ -48,36 +52,39 @@ pub Program = ("\n")* <SeperatedList<Item, "\n"+>>;
 
 Item: Item = {
     "fn" <Id> "(" ")" <Block> => Item::Function(<>),
-}
-Instr: Instr = {
-    "return" <Expr?>  => Instr::Return(<>),
-    "var" <Id> "=" <Expr> => Instr::VarInit(<>),
-    "for" <Id> "in" <Expr> ".." <Expr> <Block> => Instr::For(<>),
-    "if" <Expr> <Block> <("else" "if" <Expr> <Block>)*> <("else" <Block>)?> => Instr::If(<>),
-    <Expr> => Instr::Expr(<>),
+    // ! => {errors.push(<>); Item::Error},
 }
 
+Instr: Instr = SpannedInstr<InstrKind>;
+InstrKind: InstrKind = {
+    "return" <Expr?> => InstrKind::Return(<>),
+    "var" <name: Id> "=" <expr: Expr> => InstrKind::VarInit{<>},
+    "for" <var: Id> "in" <start: Expr> ".." <end: Expr> <body: Block> => InstrKind::For{<>},
+    "if" <cond: Expr> <then: Block> <elifs: ("else" "if" <Expr> <Block>)*> <els: ("else" <Block>)?> => InstrKind::If{<>},
+    <Expr> => InstrKind::Expr(<>),
+    ! => {errors.push(<>); InstrKind::Error}
+}
 Block: Vec<Instr> = {
     "{" ("\n")+ <(<Instr> "\n"+)*> "}" => <>
 }
 
-
-// Lowest precedence
-Expr = Tier<BinOpBoolean, Expr_>;
-Expr_ = Tier<BinOpComparison, Expr__>;
-Expr__ = Tier<BinOpExpr, Expr___>;
-Expr___ = Tier<BinOpFactor, Term>;
-// Highest precedence
-
 Exprs: Vec<Expr> = SeperatedList<Expr, ",">;
 
-Term: Expr = {
-    Num => Expr::Number(<>),
-    UniOp Term => Expr::uni_op(<>),
-    <Id> "(" <Exprs> ")" => Expr::Call(<>),
-    "(" <Expr> ")",
-    Id => Expr::Variable(<>),
-    string => Expr::String(<>.to_string()),
+Expr = SpannedExpr<ExprKind>;
+ExprKind = Tier<BinOpBoolean,       // lowest precedence
+           Tier<BinOpComparison,
+           Tier<BinOpExpr,
+           Tier<BinOpFactor, Term   // highest precedence
+           >>>>;
+
+Term: ExprKind = {
+    Num => ExprKind::Number(<>),
+    <op: UniOp> <expr: Box<SpannedExpr<Term>>> => ExprKind::UniOp{<>},
+    <name: Id> "(" <args: Exprs> ")" => ExprKind::Call{<>},
+    Id => ExprKind::Variable(<>),
+    string => ExprKind::String(<>.to_string()),
+    "(" <ExprKind> ")" => <>,
+    // ! => {errors.push(<>); ExprKind::Error},
 }
 
 Num: i32 = {
@@ -110,7 +117,6 @@ UniOp: UniOp = {
     "*" => UniOp::Deref,
 }
 
-
 SeperatedList<T, Sep>: Vec<T> = {
     <mut v:(<T> Sep)*> <e:T?> => match e {
         None => v,
@@ -121,7 +127,17 @@ SeperatedList<T, Sep>: Vec<T> = {
     }
 }
 
-Tier<Op, NextTier> = {
-    Tier<Op, NextTier> Op NextTier => Expr::bin_op(<>),
+Tier<Op, NextTier>: ExprKind = {
+    <l:Box<SpannedExpr<Tier<Op, NextTier>>>> <op:Op> <r:Box<SpannedExpr<NextTier>>> => ExprKind::BinOp{<>},
     NextTier,
 }
+
+SpannedExpr<T>: Expr = {
+    <@L> <T> <@R> => Expr::new(<>),
+}
+
+SpannedInstr<T>: Instr = {
+    <@L> <T> <@R> => Instr::new(<>),
+}
+
+Box<T>: Box<T> = <T> => Box::new(<>);

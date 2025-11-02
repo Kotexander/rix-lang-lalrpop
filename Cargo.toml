@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 lalrpop-util = { version = "0.22.2", features = ["lexer"] }
 inkwell = { version = "0.6.0", features = ["llvm18-1"] }
+codespan-reporting = "0.13.1"
 
 [build-dependencies]
 lalrpop = "0.22.2"

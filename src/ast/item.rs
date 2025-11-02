@@ -1,3 +1,5 @@
+use crate::ast::InstrKind;
+
 use super::Instr;
 
 #[derive(Debug, Clone)]
@@ -9,10 +11,8 @@ impl std::fmt::Display for Item {
         match self {
             Item::Function(name, body) => {
                 writeln!(f, "fn {}() {{", name)?;
-                for instr in body {
-                    writeln!(f, "{}", instr)?;
-                }
-                writeln!(f, "}}")
+                InstrKind::fmt_block(body, f, 1)?;
+                writeln!(f, "\n}}")
             }
         }
     }
