@@ -1,4 +1,4 @@
-use crate::ast::{BinOp, ExprKind, Id, Instr, InstrKind, Typ, UniOp};
+use crate::ast::{BinOp, ExprKind, Ident, Instr, InstrKind, Typ, UniOp, strings};
 use inkwell::{
     AddressSpace, IntPredicate,
     attributes::{Attribute, AttributeLoc},
@@ -21,13 +21,14 @@ pub struct CodeGen<'ctx> {
     ctx: &'ctx Context,
     builder: Builder<'ctx>,
     module: Module<'ctx>,
-    funcs: HashMap<String, FunctionValue<'ctx>>,
-    strings: HashMap<String, PointerValue<'ctx>>,
+    funcs: HashMap<strings::Id, FunctionValue<'ctx>>,
+    strings: HashMap<strings::Id, PointerValue<'ctx>>,
+    interner: strings::Interner,
 
     target: TargetMachine,
 }
 impl<'ctx> CodeGen<'ctx> {
-    pub fn new(name: &str, ctx: &'ctx Context) -> Self {
+    pub fn new(name: &str, mut interner: strings::Interner, ctx: &'ctx Context) -> Self {
         let builder = ctx.create_builder();
         let module = ctx.create_module(name);
         let mut funcs = HashMap::new();
@@ -43,7 +44,7 @@ impl<'ctx> CodeGen<'ctx> {
             //     AttributeLoc::Function,
             //     ctx.create_enum_attribute(Attribute::get_named_enum_kind_id("nounwind"), 0),
             // );
-            funcs.insert("printf".to_owned(), fn_value);
+            funcs.insert(interner.intern("printf"), fn_value);
         }
 
         let triple = inkwell::targets::TargetMachine::get_default_triple();
@@ -66,25 +67,28 @@ impl<'ctx> CodeGen<'ctx> {
             module,
             funcs,
             strings,
+            interner,
             target: target_machine,
         }
     }
 
-    pub fn generate(&mut self, fn_name: &str, args: &[(Id, Typ)], ast: &[Instr]) {
+    pub fn generate(&mut self, fn_name: &Ident, args: &[(Ident, Typ)], ast: &[Instr]) {
         let fn_args: Vec<_> = args
             .iter()
             .map(|(_, _)| self.ctx.i32_type().into())
             .collect();
 
-        let fun =
-            self.module
-                .add_function(fn_name, self.ctx.i32_type().fn_type(&fn_args, false), None);
+        let fun = self.module.add_function(
+            self.interner.get(fn_name.kind),
+            self.ctx.i32_type().fn_type(&fn_args, false),
+            None,
+        );
         fun.add_attribute(
             AttributeLoc::Function,
             self.ctx
                 .create_enum_attribute(Attribute::get_named_enum_kind_id("nounwind"), 0),
         );
-        self.funcs.insert(fn_name.to_owned(), fun);
+        self.funcs.insert(fn_name.kind, fun);
 
         let mut map = HashMap::new();
         let blk = self.ctx.append_basic_block(fun, "args.init");
@@ -92,12 +96,12 @@ impl<'ctx> CodeGen<'ctx> {
         for (i, (arg, _)) in args.iter().enumerate() {
             let ptr = self
                 .builder
-                .build_alloca(self.ctx.i32_type(), &arg.kind)
+                .build_alloca(self.ctx.i32_type(), self.interner.get(arg.kind))
                 .unwrap();
             self.builder
                 .build_store(ptr, fun.get_nth_param(i as u32).unwrap())
                 .unwrap();
-            map.insert(arg.kind.clone(), ptr.as_basic_value_enum());
+            map.insert(arg.kind, ptr.as_basic_value_enum());
         }
 
         let (entry, _) = self.generate_block(fun, "entry", ast, &mut map);
@@ -112,7 +116,7 @@ impl<'ctx> CodeGen<'ctx> {
         fun: FunctionValue<'ctx>,
         name: &str,
         ast: &[Instr],
-        map: &mut HashMap<String, BasicValueEnum<'ctx>>,
+        map: &mut HashMap<strings::Id, BasicValueEnum<'ctx>>,
         // blk: BasicBlock<'ctx>,
     ) -> (BasicBlock<'ctx>, BasicBlock<'ctx>) {
         let mut blk = self.ctx.append_basic_block(fun, name);
@@ -124,11 +128,11 @@ impl<'ctx> CodeGen<'ctx> {
                 InstrKind::VarInit { name, typ: _, expr } => {
                     let ptr = self
                         .builder
-                        .build_alloca(self.ctx.i32_type(), &name.kind)
+                        .build_alloca(self.ctx.i32_type(), self.interner.get(name.kind))
                         .unwrap();
                     let val = generate_expr(&expr.kind, map, self).unwrap();
                     self.builder.build_store(ptr, val).unwrap();
-                    map.insert(name.kind.clone(), ptr.as_basic_value_enum());
+                    map.insert(name.kind, ptr.as_basic_value_enum());
                 }
                 InstrKind::VarAssign { name, expr } => {
                     let ptr = map[&name.kind].into_pointer_value();
@@ -154,9 +158,9 @@ impl<'ctx> CodeGen<'ctx> {
                 } => {
                     let ptr = self
                         .builder
-                        .build_alloca(self.ctx.i32_type(), &var.kind)
+                        .build_alloca(self.ctx.i32_type(), self.interner.get(var.kind))
                         .unwrap();
-                    map.insert(var.kind.clone(), ptr.as_basic_value_enum());
+                    map.insert(var.kind, ptr.as_basic_value_enum());
 
                     let start_val = generate_expr(&start.kind, map, self)
                         .unwrap()
@@ -172,7 +176,7 @@ impl<'ctx> CodeGen<'ctx> {
 
                     let v = self
                         .builder
-                        .build_load(self.ctx.i32_type(), ptr, &var.kind)
+                        .build_load(self.ctx.i32_type(), ptr, self.interner.get(var.kind))
                         .unwrap()
                         .into_int_value();
                     let cond = self
@@ -184,7 +188,7 @@ impl<'ctx> CodeGen<'ctx> {
 
                     let v = self
                         .builder
-                        .build_load(self.ctx.i32_type(), ptr, &var.kind)
+                        .build_load(self.ctx.i32_type(), ptr, self.interner.get(var.kind))
                         .unwrap()
                         .into_int_value();
                     let one = self.ctx.i32_type().const_int(1, false);
@@ -285,10 +289,11 @@ impl<'ctx> CodeGen<'ctx> {
         (start_block, blk)
     }
 
-    fn get_string(&mut self, str: &str) -> PointerValue<'ctx> {
-        if let Some(&ptr) = self.strings.get(str) {
+    fn get_string(&mut self, str_id: strings::Id) -> PointerValue<'ctx> {
+        if let Some(&ptr) = self.strings.get(&str_id) {
             return ptr;
         }
+        let str = self.interner.get(str_id);
         let global_str = self.ctx.const_string(str.as_bytes(), true);
         let global = self.module.add_global(global_str.get_type(), None, "str");
         global.set_initializer(&global_str);
@@ -297,7 +302,7 @@ impl<'ctx> CodeGen<'ctx> {
         global.set_unnamed_addr(true);
         global.set_unnamed_address(inkwell::values::UnnamedAddress::Global);
         let ptr = global.as_pointer_value();
-        self.strings.insert(str.to_owned(), ptr);
+        self.strings.insert(str_id, ptr);
         ptr
     }
 
@@ -337,7 +342,7 @@ impl<'ctx> CodeGen<'ctx> {
 
 fn generate_expr<'a>(
     expr: &ExprKind,
-    map: &HashMap<String, BasicValueEnum<'a>>,
+    map: &HashMap<strings::Id, BasicValueEnum<'a>>,
     cg: &mut CodeGen<'a>,
 ) -> Option<BasicValueEnum<'a>> {
     match expr {
@@ -358,7 +363,7 @@ fn generate_expr<'a>(
             let v = cg.funcs[&name.kind];
 
             cg.builder
-                .build_call(v, &es_meta, &name.kind)
+                .build_call(v, &es_meta, cg.interner.get(name.kind))
                 .unwrap()
                 .try_as_basic_value()
                 .basic()
@@ -394,12 +399,12 @@ fn generate_expr<'a>(
                 .as_basic_value_enum(),
             )
         }
-        ExprKind::String(s) => Some(cg.get_string(s).as_basic_value_enum()),
+        ExprKind::String(s) => Some(cg.get_string(*s).as_basic_value_enum()),
         ExprKind::Variable(v) => {
             let ptr = map[&v.kind].into_pointer_value();
             Some(
                 cg.builder
-                    .build_load(cg.ctx.i32_type(), ptr, &v.kind)
+                    .build_load(cg.ctx.i32_type(), ptr, cg.interner.get(v.kind))
                     .unwrap(),
             )
         }

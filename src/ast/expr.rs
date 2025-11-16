@@ -1,14 +1,13 @@
-use super::Id;
-use super::Node;
+use super::{Ident, Node, strings};
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum ExprKind {
     Number(i32),
-    String(String),
+    String(strings::Id),
 
-    Variable(Id),
+    Variable(Ident),
     Call {
-        name: Id,
+        name: Ident,
         args: Vec<Expr>,
     },
     BinOp {
@@ -22,36 +21,14 @@ pub enum ExprKind {
     },
 
     StructInit {
-        name: Id,
-        fields: Vec<(Id, Expr)>,
+        name: Ident,
+        fields: Vec<(Ident, Expr)>,
     },
-}
-impl std::fmt::Display for ExprKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ExprKind::Number(n) => write!(f, "{}", n),
-            ExprKind::Call { name, args } => {
-                let args: Vec<String> = args.iter().map(|e| format!("{}", e.kind)).collect();
-                write!(f, "{}({})", name.kind, args.join(", "))
-            }
-            ExprKind::BinOp { op, l, r } => write!(f, "({} {} {})", l.kind, op, r.kind),
-            ExprKind::UniOp { op, expr } => write!(f, "({}{})", op, expr.kind),
-            ExprKind::String(s) => write!(f, "{:?}", s),
-            ExprKind::Variable(name) => write!(f, "{}", name.kind),
-            ExprKind::StructInit { name, fields } => {
-                let field_strs: Vec<String> = fields
-                    .iter()
-                    .map(|(field_name, expr)| format!(".{} = {}", field_name.kind, expr.kind))
-                    .collect();
-                write!(f, "{} {{ {} }}", name.kind, field_strs.join(", "))
-            }
-        }
-    }
 }
 
 pub type Expr = Node<ExprKind>;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub enum BinOp {
     Add,
     Sub,
@@ -78,7 +55,7 @@ impl std::fmt::Display for BinOp {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub enum UniOp {
     Neg,
     Ref,

@@ -1,6 +1,8 @@
+pub mod debug;
 mod expr;
 mod instr;
 mod item;
+pub mod strings;
 mod typ;
 
 pub use expr::*;
@@ -47,4 +49,11 @@ impl<T> Node<T> {
     }
 }
 
-pub type Id = Node<String>;
+pub type Ident = Node<strings::Id>;
+
+#[derive(Default)]
+pub struct AstBuilder {
+    pub node_id_gen: NodeIdGen,
+    pub interner: strings::Interner,
+    // pub strings: Vec<strings::Id>,
+}

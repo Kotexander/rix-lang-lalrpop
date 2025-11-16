@@ -87,7 +87,7 @@ pub enum Tok<'input> {
     Dot,
     DotDot,
     DotDotDot,
-    Id(&'input str),
+    Ident(&'input str),
 
     Fn,
     Return,
@@ -274,7 +274,7 @@ impl<'input> Iterator for Lexer<'input> {
                         "else" => return Some(Ok((i, Tok::Else, end))),
                         "struct" => return Some(Ok((i, Tok::Struct, end))),
                         "union" => return Some(Ok((i, Tok::Union, end))),
-                        _ => return Some(Ok((i, Tok::Id(id), end))),
+                        _ => return Some(Ok((i, Tok::Ident(id), end))),
                     }
                 }
                 ch => {

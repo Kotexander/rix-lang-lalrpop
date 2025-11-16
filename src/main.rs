@@ -6,7 +6,7 @@ lalrpop_mod!(
     grammar
 );
 
-use ast::NodeIdGen;
+use ast::AstBuilder;
 use clap::Parser;
 use codespan_reporting::{
     diagnostic::{Diagnostic, Label},
@@ -77,12 +77,14 @@ fn main() -> Result<(), ReturnStatus> {
     let config = term::Config::default();
 
     let mut errors = Vec::new();
+    let mut ast_builder = AstBuilder::default();
     let ast = grammar::ProgramParser::new().parse(
         &input,
-        &mut NodeIdGen::default(),
+        &mut ast_builder,
         &mut errors,
         lexer::Lexer::new(&input),
     );
+    println!("{:#?}", ast_builder.interner);
 
     let errors: Vec<_> = errors
         .into_iter()
@@ -92,11 +94,14 @@ fn main() -> Result<(), ReturnStatus> {
     match ast {
         Ok(ast) if errors.is_empty() => {
             for item in &ast {
-                println!("{}", item.kind);
+                println!(
+                    "{}",
+                    ast::debug::DisplayItem::new(&ast_builder.interner, &item.kind)
+                );
             }
 
             let llvm_ctx = llvm::initialize_llvm();
-            let mut code_gen = llvm::CodeGen::new(&cli.input, &llvm_ctx);
+            let mut code_gen = llvm::CodeGen::new(&cli.input, ast_builder.interner, &llvm_ctx);
             for item in &ast {
                 match &item.kind {
                     ast::ItemKind::Function {
@@ -105,7 +110,7 @@ fn main() -> Result<(), ReturnStatus> {
                         ret: _,
                         body: Some(body),
                     } => {
-                        code_gen.generate(&name.kind, args, body);
+                        code_gen.generate(name, args, body);
                     }
                     _ => { /* TODO */ }
                 }

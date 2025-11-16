@@ -1,5 +1,5 @@
-use crate::ast::NodeIdGen;
-use crate::ast::Id;
+use crate::ast::AstBuilder;
+use crate::ast::Ident;
 use crate::ast::Node;
 
 use crate::ast::ItemKind;
@@ -23,7 +23,7 @@ use lalrpop_util::ParseError;
 use lalrpop_util::ErrorRecovery;
 
 grammar<'input, 'err>(input: &'input str,
-                      id_gen: &mut NodeIdGen,
+                      builder: &mut AstBuilder,
                       errors: &'err mut Vec<ErrorRecovery<usize, Tok<'input>, lexer::Error>>);
 
 extern {
@@ -67,7 +67,7 @@ extern {
         "or" => Tok::Or,
         "\n" => Tok::NewLine,
         ":" => Tok::Colon,
-        id => Tok::Id(<&'input str>),
+        id => Tok::Ident(<&'input str>),
         number => Tok::Number(<&'input str>),
         string => Tok::String(<usize>, <&'input str>),
     }
@@ -77,17 +77,17 @@ pub Program = ("\n")* <SeperatedList<Item, "\n"+>>;
 
 Item: Item = Node<ItemKind>;
 ItemKind: ItemKind = {
-    "fn" <name: Id> "(" <args: SeperatedList<Arg, ",">> ")" <ret: (":" <Typ>)?> <body: (Block)?> => ItemKind::Function{<>},
-    "struct" <name: Id> "{" "\n"+ <fields: SeperatedList<Arg, "\n"+>> "}" => ItemKind::Struct{<>},
-    "union" <name: Id> "{" "\n"+ <variants: SeperatedList<Arg, "\n"+>> "}" => ItemKind::Union{<>},
+    "fn" <name: Ident> "(" <args: SeperatedList<Arg, ",">> ")" <ret: (":" <Typ>)?> <body: (Block)?> => ItemKind::Function{<>},
+    "struct" <name: Ident> "{" "\n"+ <fields: SeperatedList<Arg, "\n"+>> "}" => ItemKind::Struct{<>},
+    "union" <name: Ident> "{" "\n"+ <variants: SeperatedList<Arg, "\n"+>> "}" => ItemKind::Union{<>},
     // ! => {errors.push(<>); Item::Error},
 }
 
-Arg = <Id> ":" <Typ>;
+Arg = <Ident> ":" <Typ>;
 
 Typ: Typ = Node<TypKind>;
 TypKind: TypKind = {
-    id => TypKind::Id(<>.to_owned()),
+    id => TypKind::Ident(builder.interner.intern(<>)),
     "&" <Box<Typ>> => TypKind::Ref(<>),
     "[" <Box<Typ>> "]" => TypKind::Slice(<>),
     "*" <Box<Typ>> => TypKind::Ptr(<>),
@@ -97,9 +97,9 @@ TypKind: TypKind = {
 Instr: Instr = Node<InstrKind>;
 InstrKind: InstrKind = {
     "return" <Expr?> => InstrKind::Return(<>),
-    "var" <name: Id> <typ: Typ?> "=" <expr: Expr> => InstrKind::VarInit{<>},
-    <name: Id> "=" <expr: Expr> => InstrKind::VarAssign{<>},
-    "for" <var: Id> "in" "(" <start: Expr> ".." <end: Expr> ")" <body: Block> => InstrKind::For{<>},
+    "var" <name: Ident> <typ: Typ?> "=" <expr: Expr> => InstrKind::VarInit{<>},
+    <name: Ident> "=" <expr: Expr> => InstrKind::VarAssign{<>},
+    "for" <var: Ident> "in" "(" <start: Expr> ".." <end: Expr> ")" <body: Block> => InstrKind::For{<>},
     "if" "(" <cond: Expr> ")" <then: Block> <elifs: ("else" "if" "(" <Expr> ")" <Block>)*> <els: ("else" <Block>)?> => InstrKind::If{<>},
     <Expr> => InstrKind::Expr(<>),
     ! => {errors.push(<>); InstrKind::Error}
@@ -120,15 +120,21 @@ ExprKind = Tier<BinOpBoolean,       // lowest precedence
 Term: ExprKind = {
     Num => ExprKind::Number(<>),
     <op: UniOp> <expr: Box<Node<Term>>> => ExprKind::UniOp{<>},
-    <name: Id> "(" <args: Exprs> ")" => ExprKind::Call{<>},
-    Id => ExprKind::Variable(<>),
-    <l:@L> <s:string> <r:@R> =>? Ok(ExprKind::String(lexer::parse_string_literal(s.1,s.0,l..r).map_err(|e| ParseError::User { error: e })?.into_owned())),
+    <name: Ident> "(" <args: Exprs> ")" => ExprKind::Call{<>},
+    Ident => ExprKind::Variable(<>),
+    <l:@L> <s:string> <r:@R> =>? {
+        let parsed_str = lexer::parse_string_literal(s.1,s.0,l..r)
+                    .map_err(|e| ParseError::User { error: e })?;
+        let id = builder.interner.intern(&parsed_str);
+
+        Ok(ExprKind::String(id))
+    },
     "(" <ExprKind> ")" => <>,
-    <name: Id> "{" <fields: SeperatedList<FieldInit, ",">> "}" => ExprKind::StructInit{<>},
+    <name: Ident> "{" <fields: SeperatedList<FieldInit, ",">> "}" => ExprKind::StructInit{<>},
     // ! => {errors.push(<>); ExprKind::Error},
 }
-FieldInit: (Id, Expr) = {
-    "." <name: Id> "=" <value: Expr> => (name, value)
+FieldInit: (Ident, Expr) = {
+    "." <name: Ident> "=" <value: Expr> => (name, value)
 }
 
 Num: i32 = {
@@ -136,8 +142,8 @@ Num: i32 = {
         lexer::parse_number(n, l..r).map_err(|e| ParseError::User { error: e })
     }
 }
-Id: Id = {
-    <l:@L> <s:id> <r:@R> => Id::new(l,s.to_owned(),r, id_gen.next_id())
+Ident: Ident = {
+    <l:@L> <s:id> <r:@R> => Ident::new(l, builder.interner.intern(s), r, builder.node_id_gen.next_id())
 }
 
 BinOpFactor: BinOp = {
@@ -178,7 +184,7 @@ Tier<Op, NextTier>: ExprKind = {
 }
 
 Node<T>: Node<T> = {
-    <@L> <T> <@R> => Node::new(<>, id_gen.next_id()),
+    <@L> <T> <@R> => Node::new(<>, builder.node_id_gen.next_id()),
 }
 
 Box<T>: Box<T> = <T> => Box::new(<>);
