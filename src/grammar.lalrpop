@@ -1,20 +1,34 @@
-use crate::ast::ExprKind;
-use crate::ast::Expr;
-use crate::ast::BinOp;
-use crate::ast::UniOp;
+use crate::ast::NodeIdGen;
+use crate::ast::Id;
+use crate::ast::Node;
+
+use crate::ast::ItemKind;
 use crate::ast::Item;
+
 use crate::ast::InstrKind;
 use crate::ast::Instr;
+
+use crate::ast::ExprKind;
+use crate::ast::Expr;
+
+use crate::ast::TypKind;
+use crate::ast::Typ;
+
+use crate::ast::BinOp;
+use crate::ast::UniOp;
+
 use crate::lexer::Tok;
+use crate::lexer;
 use lalrpop_util::ParseError;
 use lalrpop_util::ErrorRecovery;
 
 grammar<'input, 'err>(input: &'input str,
-                      errors: &'err mut Vec<ErrorRecovery<usize, Tok<'input>, String>>);
+                      id_gen: &mut NodeIdGen,
+                      errors: &'err mut Vec<ErrorRecovery<usize, Tok<'input>, lexer::Error>>);
 
 extern {
     type Location = usize;
-    type Error = String;
+    type Error = lexer::Error;
 
     enum Tok<'input> {
         "fn" => Tok::Fn,
@@ -24,11 +38,16 @@ extern {
         "in" => Tok::In,
         "if" => Tok::If,
         "else" => Tok::Else,
+        "struct" => Tok::Struct,
+        "union" => Tok::Union,
 
         "(" => Tok::LParen,
         ")" => Tok::RParen,
         "{" => Tok::LBrace,
         "}" => Tok::RBrace,
+        "[" => Tok::LBracket,
+        "]" => Tok::RBracket,
+
         "+" => Tok::Plus,
         "-" => Tok::Minus,
         "*" => Tok::Asterisk,
@@ -37,35 +56,51 @@ extern {
         "%" => Tok::Percent,
         "." => Tok::Dot,
         ".." => Tok::DotDot,
+        "..." => Tok::DotDotDot,
         "," => Tok::Comma,
         "=" => Tok::Equal,
+        "<" => Tok::LessThan,
+        ">" => Tok::GreaterThan,
         "==" => Tok::EqualEqual,
+        "=>" => Tok::EqualGreater,
         "and" => Tok::And,
         "or" => Tok::Or,
         "\n" => Tok::NewLine,
         ":" => Tok::Colon,
         id => Tok::Id(<&'input str>),
         number => Tok::Number(<&'input str>),
-        string => Tok::String(<&'input str>),
+        string => Tok::String(<usize>, <&'input str>),
     }
 }
 
 pub Program = ("\n")* <SeperatedList<Item, "\n"+>>;
 
-Item: Item = {
-    "fn" <name: Id> "(" <args: SeperatedList<Arg,",">> ")" <body: Block> => Item::Function{<>},
+Item: Item = Node<ItemKind>;
+ItemKind: ItemKind = {
+    "fn" <name: Id> "(" <args: SeperatedList<Arg, ",">> ")" <ret: (":" <Typ>)?> <body: (Block)?> => ItemKind::Function{<>},
+    "struct" <name: Id> "{" "\n"+ <fields: SeperatedList<Arg, "\n"+>> "}" => ItemKind::Struct{<>},
+    "union" <name: Id> "{" "\n"+ <variants: SeperatedList<Arg, "\n"+>> "}" => ItemKind::Union{<>},
     // ! => {errors.push(<>); Item::Error},
 }
 
-Arg = <Id> ":" <Id>;
+Arg = <Id> ":" <Typ>;
 
-Instr: Instr = SpannedInstr<InstrKind>;
+Typ: Typ = Node<TypKind>;
+TypKind: TypKind = {
+    id => TypKind::Id(<>.to_owned()),
+    "&" <Box<Typ>> => TypKind::Ref(<>),
+    "[" <Box<Typ>> "]" => TypKind::Slice(<>),
+    "*" <Box<Typ>> => TypKind::Ptr(<>),
+    "..." => TypKind::VarArgs,
+}
+
+Instr: Instr = Node<InstrKind>;
 InstrKind: InstrKind = {
     "return" <Expr?> => InstrKind::Return(<>),
-    "var" <name: Id> "=" <expr: Expr> => InstrKind::VarInit{<>},
+    "var" <name: Id> <typ: Typ?> "=" <expr: Expr> => InstrKind::VarInit{<>},
     <name: Id> "=" <expr: Expr> => InstrKind::VarAssign{<>},
-    "for" <var: Id> "in" <start: Expr> ".." <end: Expr> <body: Block> => InstrKind::For{<>},
-    "if" <cond: Expr> <then: Block> <elifs: ("else" "if" <Expr> <Block>)*> <els: ("else" <Block>)?> => InstrKind::If{<>},
+    "for" <var: Id> "in" "(" <start: Expr> ".." <end: Expr> ")" <body: Block> => InstrKind::For{<>},
+    "if" "(" <cond: Expr> ")" <then: Block> <elifs: ("else" "if" "(" <Expr> ")" <Block>)*> <els: ("else" <Block>)?> => InstrKind::If{<>},
     <Expr> => InstrKind::Expr(<>),
     ! => {errors.push(<>); InstrKind::Error}
 }
@@ -75,7 +110,7 @@ Block: Vec<Instr> = {
 
 Exprs: Vec<Expr> = SeperatedList<Expr, ",">;
 
-Expr = SpannedExpr<ExprKind>;
+Expr: Expr = Node<ExprKind>;
 ExprKind = Tier<BinOpBoolean,       // lowest precedence
            Tier<BinOpComparison,
            Tier<BinOpExpr,
@@ -84,21 +119,25 @@ ExprKind = Tier<BinOpBoolean,       // lowest precedence
 
 Term: ExprKind = {
     Num => ExprKind::Number(<>),
-    <op: UniOp> <expr: Box<SpannedExpr<Term>>> => ExprKind::UniOp{<>},
+    <op: UniOp> <expr: Box<Node<Term>>> => ExprKind::UniOp{<>},
     <name: Id> "(" <args: Exprs> ")" => ExprKind::Call{<>},
     Id => ExprKind::Variable(<>),
-    string => ExprKind::String(<>.to_string()),
+    <l:@L> <s:string> <r:@R> =>? Ok(ExprKind::String(lexer::parse_string_literal(s.1,s.0,l..r).map_err(|e| ParseError::User { error: e })?.into_owned())),
     "(" <ExprKind> ")" => <>,
+    <name: Id> "{" <fields: SeperatedList<FieldInit, ",">> "}" => ExprKind::StructInit{<>},
     // ! => {errors.push(<>); ExprKind::Error},
+}
+FieldInit: (Id, Expr) = {
+    "." <name: Id> "=" <value: Expr> => (name, value)
 }
 
 Num: i32 = {
-    number =>? <>.parse::<i32>().map_err(|e| ParseError::User {
-            error: e.to_string(),
-        })
+    <l:@L> <n: number> <r:@R> =>? {
+        lexer::parse_number(n, l..r).map_err(|e| ParseError::User { error: e })
+    }
 }
-Id: String = {
-    id => <>.to_owned()
+Id: Id = {
+    <l:@L> <s:id> <r:@R> => Id::new(l,s.to_owned(),r, id_gen.next_id())
 }
 
 BinOpFactor: BinOp = {
@@ -134,16 +173,12 @@ SeperatedList<T, Sep>: Vec<T> = {
 }
 
 Tier<Op, NextTier>: ExprKind = {
-    <l:Box<SpannedExpr<Tier<Op, NextTier>>>> <op:Op> <r:Box<SpannedExpr<NextTier>>> => ExprKind::BinOp{<>},
+    <l:Box<Node<Tier<Op, NextTier>>>> <op:Op> <r:Box<Node<NextTier>>> => ExprKind::BinOp{<>},
     NextTier,
 }
 
-SpannedExpr<T>: Expr = {
-    <@L> <T> <@R> => Expr::new(<>),
-}
-
-SpannedInstr<T>: Instr = {
-    <@L> <T> <@R> => Instr::new(<>),
+Node<T>: Node<T> = {
+    <@L> <T> <@R> => Node::new(<>, id_gen.next_id()),
 }
 
 Box<T>: Box<T> = <T> => Box::new(<>);

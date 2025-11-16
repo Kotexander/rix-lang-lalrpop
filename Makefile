@@ -1,9 +1,9 @@
-run: build
-	./rix
-
 build:
 	cargo run -- main.rix -o rix.o
 	gcc -o rix rix.o
+
+run: build
+	./rix
 
 ir:
 	cargo run -- main.rix --emit-llvm -o rix.ll

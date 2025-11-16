@@ -1,13 +1,14 @@
-use super::Span;
+use super::Id;
+use super::Node;
 
 #[derive(Debug, Clone)]
 pub enum ExprKind {
     Number(i32),
     String(String),
 
-    Variable(String),
+    Variable(Id),
     Call {
-        name: String,
+        name: Id,
         args: Vec<Expr>,
     },
     BinOp {
@@ -19,7 +20,11 @@ pub enum ExprKind {
         op: UniOp,
         expr: Box<Expr>,
     },
-    // Error,
+
+    StructInit {
+        name: Id,
+        fields: Vec<(Id, Expr)>,
+    },
 }
 impl std::fmt::Display for ExprKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -27,30 +32,24 @@ impl std::fmt::Display for ExprKind {
             ExprKind::Number(n) => write!(f, "{}", n),
             ExprKind::Call { name, args } => {
                 let args: Vec<String> = args.iter().map(|e| format!("{}", e.kind)).collect();
-                write!(f, "{}({})", name, args.join(", "))
+                write!(f, "{}({})", name.kind, args.join(", "))
             }
             ExprKind::BinOp { op, l, r } => write!(f, "({} {} {})", l.kind, op, r.kind),
             ExprKind::UniOp { op, expr } => write!(f, "({}{})", op, expr.kind),
-            ExprKind::String(s) => write!(f, "\"{}\"", s),
-            ExprKind::Variable(name) => write!(f, "{}", name),
-            // ExprKind::Error => write!(f, "<error>"),
+            ExprKind::String(s) => write!(f, "{:?}", s),
+            ExprKind::Variable(name) => write!(f, "{}", name.kind),
+            ExprKind::StructInit { name, fields } => {
+                let field_strs: Vec<String> = fields
+                    .iter()
+                    .map(|(field_name, expr)| format!(".{} = {}", field_name.kind, expr.kind))
+                    .collect();
+                write!(f, "{} {{ {} }}", name.kind, field_strs.join(", "))
+            }
         }
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Expr {
-    pub kind: ExprKind,
-    pub span: Span,
-}
-impl Expr {
-    pub fn new(start: usize, typ: ExprKind, end: usize) -> Self {
-        Self {
-            kind: typ,
-            span: Span { start, end },
-        }
-    }
-}
+pub type Expr = Node<ExprKind>;
 
 #[derive(Debug, Clone, Copy)]
 pub enum BinOp {

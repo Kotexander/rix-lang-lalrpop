@@ -6,6 +6,7 @@ lalrpop_mod!(
     grammar
 );
 
+use ast::NodeIdGen;
 use clap::Parser;
 use codespan_reporting::{
     diagnostic::{Diagnostic, Label},
@@ -38,9 +39,13 @@ struct Cli {
     /// Source file
     pub input: String,
 
-    /// Write output to <FILE>
-    #[arg(short, long, value_name = "FILE")]
+    /// Output file
+    #[arg(short, long)]
     output: Option<String>,
+
+    /// Run with optimizations
+    #[arg(short = 'O', long)]
+    pub optimize: bool,
 
     /// Generate LLVM IR instead of object file
     #[arg(long)]
@@ -53,7 +58,7 @@ impl Cli {
             p.set_extension(if self.emit_llvm { "ll" } else { "o" });
             self.output = Some(p.to_string_lossy().to_string());
         }
-        &self.output.as_ref().unwrap()
+        self.output.as_ref().unwrap()
     }
 }
 
@@ -72,26 +77,44 @@ fn main() -> Result<(), ReturnStatus> {
     let config = term::Config::default();
 
     let mut errors = Vec::new();
-    let ast = grammar::ProgramParser::new().parse(&input, &mut errors, lexer::Lexer::new(&input));
+    let ast = grammar::ProgramParser::new().parse(
+        &input,
+        &mut NodeIdGen::default(),
+        &mut errors,
+        lexer::Lexer::new(&input),
+    );
+
+    let errors: Vec<_> = errors
+        .into_iter()
+        .map(|e| make_error(&e.error, file))
+        .collect();
 
     match ast {
         Ok(ast) if errors.is_empty() => {
             for item in &ast {
-                println!("{item}");
+                println!("{}", item.kind);
             }
 
             let llvm_ctx = llvm::initialize_llvm();
             let mut code_gen = llvm::CodeGen::new(&cli.input, &llvm_ctx);
             for item in &ast {
-                match item {
-                    ast::Item::Function { name, args, body } => {
-                        code_gen.generate(name, args, body);
+                match &item.kind {
+                    ast::ItemKind::Function {
+                        name,
+                        args,
+                        ret: _,
+                        body: Some(body),
+                    } => {
+                        code_gen.generate(&name.kind, args, body);
                     }
+                    _ => { /* TODO */ }
                 }
             }
-            // code_gen.print_ir();
-            code_gen.optimize();
-            // code_gen.print_ir();
+
+            if cli.optimize {
+                code_gen.optimize();
+            }
+
             if cli.emit_llvm {
                 code_gen.save_ir(cli.output());
             } else {
@@ -105,20 +128,14 @@ fn main() -> Result<(), ReturnStatus> {
         }
         Ok(_) => {
             for error in &errors {
-                term::emit_to_write_style(
-                    &mut writer,
-                    &config,
-                    &files,
-                    &make_error(&error.error, file),
-                )
-                .unwrap();
+                term::emit_to_write_style(&mut writer, &config, &files, error).unwrap();
             }
             Err(ReturnStatus::Syntax)
         }
     }
 }
 
-fn make_error(error: &ParseError<usize, Tok, String>, file: usize) -> Diagnostic<usize> {
+fn make_error(error: &ParseError<usize, Tok, lexer::Error>, file: usize) -> Diagnostic<usize> {
     match error {
         ParseError::InvalidToken { location } => {
             let l = *location;
@@ -152,6 +169,22 @@ fn make_error(error: &ParseError<usize, Tok, String>, file: usize) -> Diagnostic
                 .with_message("extra token")
                 .with_label(Label::primary(file, s..e))
         }
-        ParseError::User { error } => Diagnostic::error().with_message(error),
+        ParseError::User { error } => match error {
+            lexer::Error::UnterminatedString { span } => Diagnostic::error()
+                .with_message("unterminated string literal")
+                .with_label(
+                    Label::primary(file, span.clone()).with_message("missing closing `\"`"),
+                ),
+            lexer::Error::UnknownCharacter { span, character } => Diagnostic::error()
+                .with_message(format!("unknown character: '{}'", character))
+                .with_label(Label::primary(file, span.clone())),
+            lexer::Error::UnkownEscapeSequence { span, esc_span } => Diagnostic::error()
+                .with_message("unknown escape sequence")
+                .with_label(Label::primary(file, esc_span.clone()))
+                .with_label(Label::secondary(file, span.clone())),
+            lexer::Error::ParseInt { span, err } => Diagnostic::error()
+                .with_message(format!("failed to parse integer: {}", err))
+                .with_label(Label::primary(file, span.clone())),
+        },
     }
 }

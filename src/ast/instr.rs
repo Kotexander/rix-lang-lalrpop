@@ -1,20 +1,24 @@
-use super::{Expr, Span};
+use super::Expr;
+use super::Id;
+use super::Node;
+use super::Typ;
 
 #[derive(Debug, Clone)]
 pub enum InstrKind {
     VarInit {
-        name: String,
+        name: Id,
+        typ: Option<Typ>,
         expr: Expr,
     },
     VarAssign {
-        name: String,
+        name: Id,
         expr: Expr,
     },
     Return(Option<Expr>),
     Expr(Expr),
 
     For {
-        var: String,
+        var: Id,
         start: Expr,
         end: Expr,
         body: Vec<Instr>,
@@ -42,8 +46,14 @@ impl InstrKind {
             };
         }
         match self {
-            InstrKind::VarInit { name, expr } => write!(f, "var {} = {}", name, expr.kind),
-            InstrKind::VarAssign { name, expr } => write!(f, "{} = {}", name, expr.kind),
+            InstrKind::VarInit { name, typ, expr } => {
+                if let Some(typ) = typ {
+                    write!(f, "var {}: {} = {}", name.kind, typ.kind, expr.kind)
+                } else {
+                    write!(f, "var {} = {}", name.kind, expr.kind)
+                }
+            }
+            InstrKind::VarAssign { name, expr } => write!(f, "{} = {}", name.kind, expr.kind),
             InstrKind::Return(Some(expr)) => write!(f, "return {}", expr.kind),
             InstrKind::Return(None) => write!(f, "return"),
             InstrKind::Expr(expr) => write!(f, "{}", expr.kind),
@@ -53,7 +63,7 @@ impl InstrKind {
                 end,
                 body: block,
             } => {
-                writeln!(f, "for {} in {}..{} {{", var, start.kind, end.kind)?;
+                writeln!(f, "for {} in {}..{} {{", var.kind, start.kind, end.kind)?;
                 Self::fmt_block(block, f, indent + 1)?;
                 new_ident!();
                 write!(f, "}}")
@@ -109,16 +119,4 @@ impl std::fmt::Display for InstrKind {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Instr {
-    pub kind: InstrKind,
-    pub span: Span,
-}
-impl Instr {
-    pub fn new(start: usize, kind: InstrKind, end: usize) -> Self {
-        Self {
-            kind,
-            span: Span { start, end },
-        }
-    }
-}
+pub type Instr = Node<InstrKind>;

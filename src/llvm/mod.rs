@@ -1,4 +1,4 @@
-use crate::ast::{BinOp, ExprKind, Instr, InstrKind, UniOp};
+use crate::ast::{BinOp, ExprKind, Id, Instr, InstrKind, Typ, UniOp};
 use inkwell::{
     AddressSpace, IntPredicate,
     attributes::{Attribute, AttributeLoc},
@@ -70,13 +70,10 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-    pub fn generate(&mut self, fn_name: &str, args: &[(String, String)], ast: &[Instr]) {
+    pub fn generate(&mut self, fn_name: &str, args: &[(Id, Typ)], ast: &[Instr]) {
         let fn_args: Vec<_> = args
             .iter()
-            .map(|(_, typ)| match typ.as_str() {
-                "i32" => self.ctx.i32_type().into(),
-                _ => panic!("unsupported type: '{typ}'"),
-            })
+            .map(|(_, _)| self.ctx.i32_type().into())
             .collect();
 
         let fun =
@@ -95,12 +92,12 @@ impl<'ctx> CodeGen<'ctx> {
         for (i, (arg, _)) in args.iter().enumerate() {
             let ptr = self
                 .builder
-                .build_alloca(self.ctx.i32_type(), &arg)
+                .build_alloca(self.ctx.i32_type(), &arg.kind)
                 .unwrap();
             self.builder
                 .build_store(ptr, fun.get_nth_param(i as u32).unwrap())
                 .unwrap();
-            map.insert(arg.clone(), ptr.as_basic_value_enum());
+            map.insert(arg.kind.clone(), ptr.as_basic_value_enum());
         }
 
         let (entry, _) = self.generate_block(fun, "entry", ast, &mut map);
@@ -124,17 +121,17 @@ impl<'ctx> CodeGen<'ctx> {
 
         for i in ast {
             match &i.kind {
-                InstrKind::VarInit { name, expr } => {
+                InstrKind::VarInit { name, typ: _, expr } => {
                     let ptr = self
                         .builder
-                        .build_alloca(self.ctx.i32_type(), name)
+                        .build_alloca(self.ctx.i32_type(), &name.kind)
                         .unwrap();
                     let val = generate_expr(&expr.kind, map, self).unwrap();
                     self.builder.build_store(ptr, val).unwrap();
-                    map.insert(name.clone(), ptr.as_basic_value_enum());
+                    map.insert(name.kind.clone(), ptr.as_basic_value_enum());
                 }
                 InstrKind::VarAssign { name, expr } => {
-                    let ptr = map[name].clone().into_pointer_value();
+                    let ptr = map[&name.kind].into_pointer_value();
                     let val = generate_expr(&expr.kind, map, self).unwrap();
                     self.builder.build_store(ptr, val).unwrap();
                 }
@@ -155,8 +152,11 @@ impl<'ctx> CodeGen<'ctx> {
                     end,
                     body,
                 } => {
-                    let ptr = self.builder.build_alloca(self.ctx.i32_type(), var).unwrap();
-                    map.insert(var.clone(), ptr.as_basic_value_enum());
+                    let ptr = self
+                        .builder
+                        .build_alloca(self.ctx.i32_type(), &var.kind)
+                        .unwrap();
+                    map.insert(var.kind.clone(), ptr.as_basic_value_enum());
 
                     let start_val = generate_expr(&start.kind, map, self)
                         .unwrap()
@@ -172,7 +172,7 @@ impl<'ctx> CodeGen<'ctx> {
 
                     let v = self
                         .builder
-                        .build_load(self.ctx.i32_type(), ptr, var)
+                        .build_load(self.ctx.i32_type(), ptr, &var.kind)
                         .unwrap()
                         .into_int_value();
                     let cond = self
@@ -184,7 +184,7 @@ impl<'ctx> CodeGen<'ctx> {
 
                     let v = self
                         .builder
-                        .build_load(self.ctx.i32_type(), ptr, var)
+                        .build_load(self.ctx.i32_type(), ptr, &var.kind)
                         .unwrap()
                         .into_int_value();
                     let one = self.ctx.i32_type().const_int(1, false);
@@ -302,6 +302,9 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     pub fn save_ir(&mut self, path: impl AsRef<Path>) {
+        if let Err(err) = self.module.verify() {
+            println!("{}", err.to_string_lossy());
+        }
         self.module.print_to_file(path).unwrap()
     }
 
@@ -352,13 +355,13 @@ fn generate_expr<'a>(
                 .map(|e| generate_expr(&e.kind, map, cg).unwrap())
                 .collect();
             let es_meta: Vec<BasicMetadataValueEnum> = es.iter().map(|&e| e.into()).collect();
-            let v = cg.funcs[name];
+            let v = cg.funcs[&name.kind];
 
             cg.builder
-                .build_call(v, &es_meta, name)
+                .build_call(v, &es_meta, &name.kind)
                 .unwrap()
                 .try_as_basic_value()
-                .left()
+                .basic()
         }
         ExprKind::BinOp { op, l, r } => {
             let l = generate_expr(&l.kind, map, cg).unwrap().into_int_value();
@@ -393,8 +396,23 @@ fn generate_expr<'a>(
         }
         ExprKind::String(s) => Some(cg.get_string(s).as_basic_value_enum()),
         ExprKind::Variable(v) => {
-            let ptr = map[v].into_pointer_value();
-            Some(cg.builder.build_load(cg.ctx.i32_type(), ptr, v).unwrap())
+            let ptr = map[&v.kind].into_pointer_value();
+            Some(
+                cg.builder
+                    .build_load(cg.ctx.i32_type(), ptr, &v.kind)
+                    .unwrap(),
+            )
+        }
+        ExprKind::StructInit { name: _, fields } => {
+            let typs: Vec<_> = fields
+                .iter()
+                .map(|(_, expr)| generate_expr(&expr.kind, map, cg).unwrap())
+                .collect();
+            let struct_ty = cg.ctx.struct_type(
+                &typs.iter().map(|typ| typ.get_type()).collect::<Vec<_>>(),
+                false,
+            );
+            Some(struct_ty.const_named_struct(&typs).as_basic_value_enum())
         }
     }
 }
