@@ -1,6 +1,8 @@
 mod ast;
 mod lexer;
 mod llvm;
+mod resolver;
+mod strings;
 lalrpop_mod!(
     #[allow(clippy::ptr_arg)]
     grammar
@@ -84,21 +86,26 @@ fn main() -> Result<(), ReturnStatus> {
         &mut errors,
         lexer::Lexer::new(&input),
     );
-    println!("{:#?}", ast_builder.interner);
+    // println!("{:#?}", ast_builder.interner);
 
-    let errors: Vec<_> = errors
+    let mut errors: Vec<_> = errors
         .into_iter()
         .map(|e| make_error(&e.error, file))
         .collect();
 
+    if let Ok(ast) = &ast {
+        let mut resolver = resolver::Resolver::new(&mut ast_builder.interner, &mut errors, file);
+        resolver.resolve(ast);
+    }
+
     match ast {
         Ok(ast) if errors.is_empty() => {
-            for item in &ast {
-                println!(
-                    "{}",
-                    ast::debug::DisplayItem::new(&ast_builder.interner, &item.kind)
-                );
-            }
+            // for item in &ast {
+            //     println!(
+            //         "{}",
+            //         ast::debug::DisplayItem::new(&ast_builder.interner, &item.kind)
+            //     );
+            // }
 
             let llvm_ctx = llvm::initialize_llvm();
             let mut code_gen = llvm::CodeGen::new(&cli.input, ast_builder.interner, &llvm_ctx);

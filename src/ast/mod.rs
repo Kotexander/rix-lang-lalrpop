@@ -2,13 +2,14 @@ pub mod debug;
 mod expr;
 mod instr;
 mod item;
-pub mod strings;
 mod typ;
 
 pub use expr::*;
 pub use instr::*;
 pub use item::*;
 pub use typ::*;
+
+use crate::strings;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Span {

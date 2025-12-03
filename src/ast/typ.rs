@@ -1,8 +1,9 @@
-use super::{Node, strings};
+use super::Ident;
+use super::Node;
 
 #[derive(Clone)]
 pub enum TypKind {
-    Ident(strings::Id),
+    Ident(Ident),
     Ref(Box<Typ>),
     Slice(Box<Typ>),
     Ptr(Box<Typ>),

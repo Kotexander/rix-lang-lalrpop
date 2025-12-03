@@ -87,7 +87,7 @@ Arg = <Ident> ":" <Typ>;
 
 Typ: Typ = Node<TypKind>;
 TypKind: TypKind = {
-    id => TypKind::Ident(builder.interner.intern(<>)),
+    Ident => TypKind::Ident(<>),
     "&" <Box<Typ>> => TypKind::Ref(<>),
     "[" <Box<Typ>> "]" => TypKind::Slice(<>),
     "*" <Box<Typ>> => TypKind::Ptr(<>),

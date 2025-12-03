@@ -1,4 +1,5 @@
-use super::{Ident, Node, strings};
+use super::{Ident, Node};
+use crate::strings;
 
 #[derive(Clone)]
 pub enum ExprKind {

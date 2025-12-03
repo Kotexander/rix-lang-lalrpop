@@ -51,11 +51,12 @@ struct Vector {
     x: i32
     y: i32
 }
+
 union PorV  {
     p: Point
     vec3: Vector
 }
-fn struct_union_demo()  {
+fn struct_union_demo() : Point {
     var p = Point { .x = 10, .y = 20 }
     return p
 }

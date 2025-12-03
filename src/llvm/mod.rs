@@ -1,4 +1,5 @@
-use crate::ast::{BinOp, ExprKind, Ident, Instr, InstrKind, Typ, UniOp, strings};
+use crate::ast::{BinOp, ExprKind, Ident, Instr, InstrKind, Typ, UniOp};
+use crate::strings;
 use inkwell::{
     AddressSpace, IntPredicate,
     attributes::{Attribute, AttributeLoc},

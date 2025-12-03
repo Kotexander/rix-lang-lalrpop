@@ -1,4 +1,4 @@
-use super::strings;
+use crate::strings;
 
 pub struct DisplayItem<'a> {
     pub interner: &'a strings::Interner,
@@ -18,21 +18,21 @@ impl<'a> std::fmt::Display for DisplayItem<'a> {
                 ret,
                 body,
             } => {
-                write!(
-                    f,
-                    "fn {}({})",
-                    self.interner.get(name.kind),
-                    args.iter()
-                        .map(|(arg_name, arg_typ)| {
-                            format!(
-                                "{}: {}",
-                                self.interner.get(arg_name.kind),
-                                DisplayTyp::new(self.interner, &arg_typ.kind)
-                            )
-                        })
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )?;
+                write!(f, "fn {}(", self.interner.get(name.kind))?;
+                let mut first = true;
+                for (arg_name, arg_typ) in args {
+                    if !first {
+                        write!(f, ", ")?;
+                    }
+                    first = false;
+                    write!(
+                        f,
+                        "{}: {}",
+                        self.interner.get(arg_name.kind),
+                        DisplayTyp::new(self.interner, &arg_typ.kind)
+                    )?;
+                }
+                write!(f, ")")?;
                 if let Some(ret_typ) = ret {
                     write!(f, " : {}", DisplayTyp::new(self.interner, &ret_typ.kind))?;
                 }
@@ -113,16 +113,24 @@ impl<'a> std::fmt::Display for DisplayInstr<'a> {
             write!(f, "    ")?;
         }
         match self.instr {
-            super::InstrKind::VarInit { name, typ, expr } => writeln!(
-                f,
-                "var {}: {} = {}",
-                self.interner.get(name.kind),
-                match typ {
-                    Some(typ) => DisplayTyp::new(self.interner, &typ.kind).to_string(),
-                    None => "_".to_owned(),
-                },
-                DisplayExpr::new(self.interner, &expr.kind)
-            ),
+            super::InstrKind::VarInit { name, typ, expr } => {
+                if let Some(typ) = typ {
+                    writeln!(
+                        f,
+                        "var {}: {} = {}",
+                        self.interner.get(name.kind),
+                        DisplayTyp::new(self.interner, &typ.kind),
+                        DisplayExpr::new(self.interner, &expr.kind)
+                    )
+                } else {
+                    writeln!(
+                        f,
+                        "var {} = {}",
+                        self.interner.get(name.kind),
+                        DisplayExpr::new(self.interner, &expr.kind)
+                    )
+                }
+            }
             super::InstrKind::VarAssign { name, expr } => {
                 writeln!(
                     f,
@@ -226,15 +234,19 @@ impl<'a> std::fmt::Display for DisplayExpr<'a> {
             super::ExprKind::Number(n) => write!(f, "{}", n),
             super::ExprKind::String(id) => write!(f, "{:?}", self.interner.get(*id)),
             super::ExprKind::Variable(ident) => write!(f, "{}", self.interner.get(ident.kind)),
-            super::ExprKind::Call { name, args } => write!(
-                f,
-                "{}({})",
-                self.interner.get(name.kind),
-                args.iter()
-                    .map(|arg| format!("{}", self.with(&arg.kind)))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ),
+            super::ExprKind::Call { name, args } => {
+                write!(f, "{}", self.interner.get(name.kind))?;
+                write!(f, "(")?;
+                let mut first = true;
+                for arg in args {
+                    if !first {
+                        write!(f, ", ")?;
+                    }
+                    first = false;
+                    write!(f, "{}", self.with(&arg.kind))?;
+                }
+                write!(f, ")")
+            }
             super::ExprKind::BinOp { op, l, r } => {
                 write!(f, "({} {} {})", self.with(&l.kind), op, self.with(&r.kind))
             }
@@ -242,22 +254,21 @@ impl<'a> std::fmt::Display for DisplayExpr<'a> {
                 write!(f, "({}{})", op, self.with(&expr.kind))
             }
             super::ExprKind::StructInit { name, fields } => {
-                write!(
-                    f,
-                    "{} {{ {} }}",
-                    self.interner.get(name.kind),
-                    fields
-                        .iter()
-                        .map(|(field_name, field_expr)| {
-                            format!(
-                                ".{} = {}",
-                                self.interner.get(field_name.kind),
-                                self.with(&field_expr.kind)
-                            )
-                        })
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
+                write!(f, "{} {{ ", self.interner.get(name.kind))?;
+                let mut first = true;
+                for (field_name, field_expr) in fields {
+                    if !first {
+                        write!(f, ", ")?;
+                    }
+                    first = false;
+                    write!(
+                        f,
+                        ".{} = {}",
+                        self.interner.get(field_name.kind),
+                        self.with(&field_expr.kind)
+                    )?;
+                }
+                write!(f, " }}")
             }
         }
     }
@@ -282,7 +293,7 @@ impl<'a> DisplayTyp<'a> {
 impl<'a> std::fmt::Display for DisplayTyp<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.typ {
-            super::TypKind::Ident(id) => write!(f, "{}", self.interner.get(*id)),
+            super::TypKind::Ident(id) => write!(f, "{}", self.interner.get(id.kind)),
             super::TypKind::Ref(typ) => write!(f, "&{}", self.with(&typ.kind)),
             super::TypKind::Slice(typ) => write!(f, "[{}]", self.with(&typ.kind)),
             super::TypKind::Ptr(typ) => write!(f, "*{}", self.with(&typ.kind)),
