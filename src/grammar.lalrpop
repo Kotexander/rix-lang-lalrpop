@@ -97,7 +97,7 @@ TypKind: TypKind = {
 Instr: Instr = Node<InstrKind>;
 InstrKind: InstrKind = {
     "return" <Expr?> => InstrKind::Return(<>),
-    "var" <name: Ident> <typ: Typ?> "=" <expr: Expr> => InstrKind::VarInit{<>},
+    "var" <name: Ident> <typ: TypeHint?> "=" <expr: Expr> => InstrKind::VarInit{<>},
     <name: Ident> "=" <expr: Expr> => InstrKind::VarAssign{<>},
     "for" <var: Ident> "in" "(" <start: Expr> ".." <end: Expr> ")" <body: Block> => InstrKind::For{<>},
     "if" "(" <cond: Expr> ")" <then: Block> <elifs: ("else" "if" "(" <Expr> ")" <Block>)*> <els: ("else" <Block>)?> => InstrKind::If{<>},
@@ -106,6 +106,9 @@ InstrKind: InstrKind = {
 }
 Block: Vec<Instr> = {
     "{" ("\n")+ <(<Instr> "\n"+)*> "}" => <>
+}
+TypeHint: Typ = {
+    ":" <typ: Typ> => typ
 }
 
 Exprs: Vec<Expr> = SeperatedList<Expr, ",">;

@@ -56,5 +56,4 @@ pub type Ident = Node<strings::Id>;
 pub struct AstBuilder {
     pub node_id_gen: NodeIdGen,
     pub interner: strings::Interner,
-    // pub strings: Vec<strings::Id>,
 }
