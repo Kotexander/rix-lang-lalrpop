@@ -1,28 +1,30 @@
-use crate::{ast::Span, strings};
+use super::typ;
+use crate::ast::Span;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum Value {
-    Function { span: Span },
-    Variable { span: Span },
+    Function {
+        span: Span,
+        typ: Option<typ::FunctionType>,
+    },
+    Variable {
+        span: Span,
+        typ: Option<typ::Type>,
+    },
 }
 impl Value {
     pub fn span(&self) -> Span {
         match self {
-            Value::Function { span } => *span,
-            Value::Variable { span } => *span,
+            Value::Function { span, .. } => *span,
+            Value::Variable { span, .. } => *span,
         }
     }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum PrimitiveType {
-    I32,
-    U8,
-    Bool,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum Type {
-    Prim(PrimitiveType),
-    Custom(strings::Id, Span),
+    pub fn typ(&self) -> Option<typ::Type> {
+        match self {
+            Value::Function { typ, .. } => typ
+                .as_ref()
+                .map(|f| typ::Type::Function(std::rc::Rc::new(f.clone()))),
+            Value::Variable { typ, .. } => typ.clone(),
+        }
+    }
 }

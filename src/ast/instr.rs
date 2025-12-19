@@ -14,12 +14,13 @@ pub enum InstrKind {
     Return(Option<Expr>),
     Expr(Expr),
 
-    For {
-        var: Ident,
-        start: Expr,
-        end: Expr,
+    While {
+        cond: Expr,
         body: Vec<Instr>,
     },
+    Break,
+    Continue,
+
     If {
         cond: Expr,
         then: Vec<Instr>,

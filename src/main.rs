@@ -93,42 +93,38 @@ fn main() -> Result<(), ReturnStatus> {
         .map(|e| make_error(&e.error, file))
         .collect();
 
+    let mut annotations = None;
     if let Ok(ast) = &ast {
         let mut resolver = resolver::Resolver::new(&mut ast_builder.interner, &mut errors, file);
         resolver.resolve(ast);
+        annotations = Some(resolver.finish());
     }
 
     match ast {
         Ok(ast) if errors.is_empty() => {
-            // for item in &ast {
-            //     println!(
-            //         "{}",
-            //         ast::debug::DisplayItem::new(&ast_builder.interner, &item.kind)
-            //     );
-            // }
+            for item in &ast {
+                println!(
+                    "{}",
+                    ast::debug::DisplayItem::new(&ast_builder.interner, &item.kind)
+                );
+            }
 
             let llvm_ctx = llvm::initialize_llvm();
-            let mut code_gen = llvm::CodeGen::new(&cli.input, ast_builder.interner, &llvm_ctx);
-            for item in &ast {
-                match &item.kind {
-                    ast::ItemKind::Function {
-                        name,
-                        args,
-                        ret: _,
-                        body: Some(body),
-                    } => {
-                        code_gen.generate(name, args, body);
-                    }
-                    _ => { /* TODO */ }
-                }
-            }
+            let mut code_gen = llvm::CodeGen::new(
+                &cli.input,
+                &llvm_ctx,
+                &ast_builder.interner,
+                annotations.as_ref().unwrap(),
+            );
+
+            code_gen.generate(&ast);
 
             if cli.optimize {
                 code_gen.optimize();
             }
 
             if cli.emit_llvm {
-                code_gen.save_ir(cli.output());
+                code_gen.print(cli.output());
             } else {
                 code_gen.generate_object_file(cli.output());
             }

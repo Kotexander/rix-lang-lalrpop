@@ -20,6 +20,10 @@ pub enum ExprKind {
         op: UniOp,
         expr: Box<Expr>,
     },
+    FieldAccess {
+        expr: Box<Expr>,
+        field: Ident,
+    },
 
     StructInit {
         name: Ident,
@@ -37,6 +41,11 @@ pub enum BinOp {
     Div,
     Mod,
     Eq,
+    Lt,
+    Gt,
+    Le,
+    Ge,
+    Ne,
     And,
     Or,
 }
@@ -49,6 +58,11 @@ impl std::fmt::Display for BinOp {
             BinOp::Div => "/",
             BinOp::Mod => "%",
             BinOp::Eq => "==",
+            BinOp::Lt => "<",
+            BinOp::Gt => ">",
+            BinOp::Le => "<=",
+            BinOp::Ge => ">=",
+            BinOp::Ne => "!=",
             BinOp::And => "and",
             BinOp::Or => "or",
         };

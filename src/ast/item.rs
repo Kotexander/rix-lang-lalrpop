@@ -1,10 +1,10 @@
-use super::{Ident, Instr, Node, Typ};
+use super::{ArgTyp, Ident, Instr, Node, Typ};
 
 #[derive(Clone)]
 pub enum ItemKind {
     Function {
         name: Ident,
-        args: Vec<(Ident, Typ)>,
+        args: Vec<(Ident, ArgTyp)>,
         ret: Option<Typ>,
         body: Option<Vec<Instr>>,
     },

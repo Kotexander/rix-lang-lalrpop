@@ -7,7 +7,14 @@ pub enum TypKind {
     Ref(Box<Typ>),
     Slice(Box<Typ>),
     Ptr(Box<Typ>),
-    VarArgs,
+    // VarArgs,
 }
 
 pub type Typ = Node<TypKind>;
+
+#[derive(Clone)]
+pub enum ArgTypKind {
+    Typ(Typ),
+    VarArgs,
+}
+pub type ArgTyp = Node<ArgTypKind>;

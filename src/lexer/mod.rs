@@ -63,16 +63,25 @@ pub enum Tok<'input> {
     String(usize, &'input str),
     NewLine,
     Colon,
+
     Plus,
     Minus,
-    Asterisk,
     Slash,
     Percent,
     Apersand,
+    Not,
+
+    Asterisk,
     Equal,
     EqualEqual,
     LessThan,
     GreaterThan,
+    /// <=
+    LessEqual,
+    /// >=
+    GreaterEqual,
+    /// !=
+    NotEqual,
     /// =>
     EqualGreater,
 
@@ -88,6 +97,10 @@ pub enum Tok<'input> {
     DotDot,
     DotDotDot,
     Ident(&'input str),
+
+    While,
+    Break,
+    Continue,
 
     Fn,
     Return,
@@ -170,8 +183,54 @@ impl<'input> Iterator for Lexer<'input> {
                 '/' => return Some(Ok((i, Tok::Slash, i + ch.len_utf8()))),
                 '&' => return Some(Ok((i, Tok::Apersand, i + ch.len_utf8()))),
                 '%' => return Some(Ok((i, Tok::Percent, i + ch.len_utf8()))),
-                '<' => return Some(Ok((i, Tok::LessThan, i + ch.len_utf8()))),
-                '>' => return Some(Ok((i, Tok::GreaterThan, i + ch.len_utf8()))),
+                '!' => {
+                    let (tok, j) = if let Some((ni, nch)) = self.chars.peek() {
+                        let ni = *ni;
+                        let nch = *nch;
+                        match nch {
+                            '=' => {
+                                self.chars.next();
+                                (Tok::NotEqual, ni + nch.len_utf8())
+                            }
+                            _ => (Tok::Not, i + ch.len_utf8()),
+                        }
+                    } else {
+                        (Tok::Not, i + ch.len_utf8())
+                    };
+                    return Some(Ok((i, tok, j)));
+                }
+                '<' => {
+                    let (tok, j) = if let Some((ni, nch)) = self.chars.peek() {
+                        let ni = *ni;
+                        let nch = *nch;
+                        match nch {
+                            '=' => {
+                                self.chars.next();
+                                (Tok::LessEqual, ni + nch.len_utf8())
+                            }
+                            _ => (Tok::LessThan, i + ch.len_utf8()),
+                        }
+                    } else {
+                        (Tok::LessThan, i + ch.len_utf8())
+                    };
+                    return Some(Ok((i, tok, j)));
+                }
+                '>' => {
+                    let (tok, j) = if let Some((ni, nch)) = self.chars.peek() {
+                        let ni = *ni;
+                        let nch = *nch;
+                        match nch {
+                            '=' => {
+                                self.chars.next();
+                                (Tok::GreaterEqual, ni + nch.len_utf8())
+                            }
+                            _ => (Tok::GreaterThan, i + ch.len_utf8()),
+                        }
+                    } else {
+                        (Tok::GreaterThan, i + ch.len_utf8())
+                    };
+                    return Some(Ok((i, tok, j)));
+                }
                 '(' => return Some(Ok((i, Tok::LParen, i + ch.len_utf8()))),
                 ')' => return Some(Ok((i, Tok::RParen, i + ch.len_utf8()))),
                 '{' => return Some(Ok((i, Tok::LBrace, i + ch.len_utf8()))),
@@ -267,6 +326,9 @@ impl<'input> Iterator for Lexer<'input> {
                         "return" => return Some(Ok((i, Tok::Return, end))),
                         "var" => return Some(Ok((i, Tok::Var, end))),
                         "for" => return Some(Ok((i, Tok::For, end))),
+                        "while" => return Some(Ok((i, Tok::While, end))),
+                        "break" => return Some(Ok((i, Tok::Break, end))),
+                        "continue" => return Some(Ok((i, Tok::Continue, end))),
                         "and" => return Some(Ok((i, Tok::And, end))),
                         "or" => return Some(Ok((i, Tok::Or, end))),
                         "in" => return Some(Ok((i, Tok::In, end))),

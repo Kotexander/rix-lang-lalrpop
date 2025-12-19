@@ -13,6 +13,8 @@ use crate::ast::Expr;
 
 use crate::ast::TypKind;
 use crate::ast::Typ;
+use crate::ast::ArgTypKind;
+use crate::ast::ArgTyp;
 
 use crate::ast::BinOp;
 use crate::ast::UniOp;
@@ -35,6 +37,9 @@ extern {
         "return" => Tok::Return,
         "var" => Tok::Var,
         "for" => Tok::For,
+        "while" => Tok::While,
+        "break" => Tok::Break,
+        "continue" => Tok::Continue,
         "in" => Tok::In,
         "if" => Tok::If,
         "else" => Tok::Else,
@@ -54,6 +59,7 @@ extern {
         "/" => Tok::Slash,
         "&" => Tok::Apersand,
         "%" => Tok::Percent,
+        "!" => Tok::Not,
         "." => Tok::Dot,
         ".." => Tok::DotDot,
         "..." => Tok::DotDotDot,
@@ -61,7 +67,10 @@ extern {
         "=" => Tok::Equal,
         "<" => Tok::LessThan,
         ">" => Tok::GreaterThan,
+        "<=" => Tok::LessEqual,
+        ">=" => Tok::GreaterEqual,
         "==" => Tok::EqualEqual,
+        "!=" => Tok::NotEqual,
         "=>" => Tok::EqualGreater,
         "and" => Tok::And,
         "or" => Tok::Or,
@@ -78,12 +87,18 @@ pub Program = ("\n")* <SeperatedList<Item, "\n"+>>;
 Item: Item = Node<ItemKind>;
 ItemKind: ItemKind = {
     "fn" <name: Ident> "(" <args: SeperatedList<Arg, ",">> ")" <ret: (":" <Typ>)?> <body: (Block)?> => ItemKind::Function{<>},
-    "struct" <name: Ident> "{" "\n"+ <fields: SeperatedList<Arg, "\n"+>> "}" => ItemKind::Struct{<>},
-    "union" <name: Ident> "{" "\n"+ <variants: SeperatedList<Arg, "\n"+>> "}" => ItemKind::Union{<>},
+    "struct" <name: Ident> "{" "\n"+ <fields: SeperatedList<Field, "\n"+>> "}" => ItemKind::Struct{<>},
+    "union" <name: Ident> "{" "\n"+ <variants: SeperatedList<Field, "\n"+>> "}" => ItemKind::Union{<>},
     // ! => {errors.push(<>); Item::Error},
 }
 
-Arg = <Ident> ":" <Typ>;
+ArgTyp: ArgTyp = Node<ArgTypKind>;
+ArgTypKind: ArgTypKind = {
+    Typ => ArgTypKind::Typ(<>),
+    "..." => ArgTypKind::VarArgs,
+}
+Arg = <Ident> ":" <ArgTyp>;
+Field = <Ident> ":" <Typ>;
 
 Typ: Typ = Node<TypKind>;
 TypKind: TypKind = {
@@ -91,7 +106,6 @@ TypKind: TypKind = {
     "&" <Box<Typ>> => TypKind::Ref(<>),
     "[" <Box<Typ>> "]" => TypKind::Slice(<>),
     "*" <Box<Typ>> => TypKind::Ptr(<>),
-    "..." => TypKind::VarArgs,
 }
 
 Instr: Instr = Node<InstrKind>;
@@ -99,7 +113,10 @@ InstrKind: InstrKind = {
     "return" <Expr?> => InstrKind::Return(<>),
     "var" <name: Ident> <typ: TypeHint?> "=" <expr: Expr> => InstrKind::VarInit{<>},
     <name: Ident> "=" <expr: Expr> => InstrKind::VarAssign{<>},
-    "for" <var: Ident> "in" "(" <start: Expr> ".." <end: Expr> ")" <body: Block> => InstrKind::For{<>},
+    // "for" <var: Ident> "in" "(" <start: Expr> ".." <end: Expr> ")" <body: Block> => InstrKind::For{<>},
+    "while" "(" <cond: Expr> ")" <body: Block> => InstrKind::While{<>},
+    "break" => InstrKind::Break,
+    "continue" => InstrKind::Continue,
     "if" "(" <cond: Expr> ")" <then: Block> <elifs: ("else" "if" "(" <Expr> ")" <Block>)*> <els: ("else" <Block>)?> => InstrKind::If{<>},
     <Expr> => InstrKind::Expr(<>),
     ! => {errors.push(<>); InstrKind::Error}
@@ -132,6 +149,7 @@ Term: ExprKind = {
 
         Ok(ExprKind::String(id))
     },
+    "(" <expr: Box<Node<Term>>> "." <field: Ident> ")" => ExprKind::FieldAccess{<>},
     "(" <ExprKind> ")" => <>,
     <name: Ident> "{" <fields: SeperatedList<FieldInit, ",">> "}" => ExprKind::StructInit{<>},
     // ! => {errors.push(<>); ExprKind::Error},
@@ -164,11 +182,17 @@ BinOpBoolean: BinOp = {
 }
 BinOpComparison: BinOp = {
     "==" => BinOp::Eq,
+    "<" => BinOp::Lt,
+    ">" => BinOp::Gt,
+    "<=" => BinOp::Le,
+    ">=" => BinOp::Ge,
+    "!=" => BinOp::Ne,
 }
 UniOp: UniOp = {
     "-" => UniOp::Neg,
     "&" => UniOp::Ref,
     "*" => UniOp::Deref,
+    // "!" => UniOp::Not,
 }
 
 SeperatedList<T, Sep>: Vec<T> = {

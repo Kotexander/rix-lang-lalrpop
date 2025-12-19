@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::strings;
 
 pub struct DisplayItem<'a> {
@@ -29,7 +31,7 @@ impl<'a> std::fmt::Display for DisplayItem<'a> {
                         f,
                         "{}: {}",
                         self.interner.get(arg_name.kind),
-                        DisplayTyp::new(self.interner, &arg_typ.kind)
+                        DisplayArgTyp::new(self.interner, &arg_typ.kind)
                     )?;
                 }
                 write!(f, ")")?;
@@ -149,18 +151,11 @@ impl<'a> std::fmt::Display for DisplayInstr<'a> {
             super::InstrKind::Expr(expr) => {
                 writeln!(f, "{}", DisplayExpr::new(self.interner, &expr.kind))
             }
-            super::InstrKind::For {
-                var,
-                start,
-                end,
-                body,
-            } => {
+            super::InstrKind::While { cond, body } => {
                 writeln!(
                     f,
-                    "for {} in ({}..{}) {{",
-                    self.interner.get(var.kind),
-                    DisplayExpr::new(self.interner, &start.kind),
-                    DisplayExpr::new(self.interner, &end.kind)
+                    "while ({}) {{",
+                    DisplayExpr::new(self.interner, &cond.kind)
                 )?;
                 for instr in body {
                     write!(f, "{}", self.indent().with(&instr.kind))?;
@@ -170,6 +165,8 @@ impl<'a> std::fmt::Display for DisplayInstr<'a> {
                 }
                 writeln!(f, "}}")
             }
+            super::InstrKind::Break => writeln!(f, "break"),
+            super::InstrKind::Continue => writeln!(f, "continue"),
             super::InstrKind::If {
                 cond,
                 then,
@@ -270,6 +267,14 @@ impl<'a> std::fmt::Display for DisplayExpr<'a> {
                 }
                 write!(f, " }}")
             }
+            super::ExprKind::FieldAccess { expr, field } => {
+                write!(
+                    f,
+                    "{}.{}",
+                    self.with(&expr.kind),
+                    self.interner.get(field.kind)
+                )
+            }
         }
     }
 }
@@ -297,7 +302,26 @@ impl<'a> std::fmt::Display for DisplayTyp<'a> {
             super::TypKind::Ref(typ) => write!(f, "&{}", self.with(&typ.kind)),
             super::TypKind::Slice(typ) => write!(f, "[{}]", self.with(&typ.kind)),
             super::TypKind::Ptr(typ) => write!(f, "*{}", self.with(&typ.kind)),
-            super::TypKind::VarArgs => write!(f, "..."),
+        }
+    }
+}
+
+pub struct DisplayArgTyp<'a> {
+    pub interner: &'a strings::Interner,
+    pub ret_typ: &'a super::ArgTypKind,
+}
+impl<'a> DisplayArgTyp<'a> {
+    pub fn new(interner: &'a strings::Interner, ret_typ: &'a super::ArgTypKind) -> Self {
+        DisplayArgTyp { interner, ret_typ }
+    }
+}
+impl<'a> std::fmt::Display for DisplayArgTyp<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.ret_typ {
+            super::ArgTypKind::Typ(typ) => {
+                write!(f, "{}", DisplayTyp::new(self.interner, &typ.kind))
+            }
+            super::ArgTypKind::VarArgs => write!(f, "..."),
         }
     }
 }
