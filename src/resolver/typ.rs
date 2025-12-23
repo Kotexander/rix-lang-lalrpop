@@ -28,6 +28,7 @@ impl Type {
             Type::Primitive(ty) => ty.uniop(op),
             Type::Ref(typ) | Type::Ptr(typ) => match op {
                 UniOp::Deref => Some((*typ.as_ref()).clone()),
+                UniOp::Not => Some(Type::Primitive(PrimitiveType::Bool)),
                 _ => None,
             },
             _ => None,
@@ -96,10 +97,13 @@ impl PrimitiveType {
     pub fn uniop(&self, op: UniOp) -> Option<Type> {
         match self {
             PrimitiveType::I32 | PrimitiveType::U8 => match op {
-                UniOp::Neg => Some(Type::Primitive(*self)),
+                UniOp::Neg | UniOp::Not => Some(Type::Primitive(*self)),
                 _ => None,
             },
-            PrimitiveType::Bool => None,
+            PrimitiveType::Bool => match op {
+                UniOp::Not => Some(Type::Primitive(PrimitiveType::Bool)),
+                _ => None,
+            },
             _ => None,
         }
     }

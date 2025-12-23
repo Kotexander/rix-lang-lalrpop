@@ -102,12 +102,12 @@ fn main() -> Result<(), ReturnStatus> {
 
     match ast {
         Ok(ast) if errors.is_empty() => {
-            for item in &ast {
-                println!(
-                    "{}",
-                    ast::debug::DisplayItem::new(&ast_builder.interner, &item.kind)
-                );
-            }
+            // for item in &ast {
+            //     println!(
+            //         "{}",
+            //         ast::debug::DisplayItem::new(&ast_builder.interner, &item.kind)
+            //     );
+            // }
 
             let llvm_ctx = llvm::initialize_llvm();
             let mut code_gen = llvm::CodeGen::new(

@@ -60,10 +60,12 @@ extern {
         "&" => Tok::Apersand,
         "%" => Tok::Percent,
         "!" => Tok::Not,
+
         "." => Tok::Dot,
         ".." => Tok::DotDot,
         "..." => Tok::DotDotDot,
         "," => Tok::Comma,
+
         "=" => Tok::Equal,
         "<" => Tok::LessThan,
         ">" => Tok::GreaterThan,
@@ -71,11 +73,13 @@ extern {
         ">=" => Tok::GreaterEqual,
         "==" => Tok::EqualEqual,
         "!=" => Tok::NotEqual,
-        "=>" => Tok::EqualGreater,
         "and" => Tok::And,
         "or" => Tok::Or,
-        "\n" => Tok::NewLine,
+
+        "=>" => Tok::EqualGreater,
         ":" => Tok::Colon,
+
+        "\n" => Tok::NewLine,
         id => Tok::Ident(<&'input str>),
         number => Tok::Number(<&'input str>),
         string => Tok::String(<usize>, <&'input str>),
@@ -192,7 +196,7 @@ UniOp: UniOp = {
     "-" => UniOp::Neg,
     "&" => UniOp::Ref,
     "*" => UniOp::Deref,
-    // "!" => UniOp::Not,
+    "!" => UniOp::Not,
 }
 
 SeperatedList<T, Sep>: Vec<T> = {

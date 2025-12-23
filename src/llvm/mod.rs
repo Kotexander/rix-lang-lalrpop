@@ -61,6 +61,8 @@ impl<'ctx> CodeGen<'ctx> {
         let funs = HashMap::new();
         let strings = HashMap::new();
 
+        module.set_data_layout(&target_machine.get_target_data().get_data_layout());
+
         Self {
             ctx,
             module,
@@ -117,14 +119,32 @@ impl<'ctx> CodeGen<'ctx> {
                     map.insert(arg_def_id, ptr);
                 }
 
-                for instr in body {
-                    self.generate_instr(instr, &builder, &mut map);
-                }
+                let _returned = self.generate_body(body, &builder, &mut map);
             }
         }
     }
 
-    pub fn generate_instr(
+    fn generate_body(
+        &mut self,
+        body: &[Instr],
+        builder: &builder::Builder<'ctx>,
+        map: &mut HashMap<DefId, PointerValue<'ctx>>,
+    ) -> bool {
+        for instr in body {
+            self.generate_instr(instr, &builder, map);
+            if builder
+                .get_insert_block()
+                .unwrap()
+                .get_terminator()
+                .is_some()
+            {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn generate_instr(
         &mut self,
         instr: &Instr,
         builder: &builder::Builder<'ctx>,
@@ -199,11 +219,11 @@ impl<'ctx> CodeGen<'ctx> {
 
                 // Body block
                 builder.position_at_end(body_bb);
-                for instr in body {
-                    self.generate_instr(instr, builder, map);
-                }
-                builder.build_unconditional_branch(cond_bb).unwrap();
 
+                let returned = self.generate_body(body, builder, map);
+                if !returned {
+                    builder.build_unconditional_branch(cond_bb).unwrap();
+                }
                 // End block
                 builder.position_at_end(end_bb);
             }
@@ -247,6 +267,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .generate_expr(cond, builder, map)
                     .unwrap()
                     .into_int_value();
+
                 if !elifs.is_empty() {
                     builder
                         .build_conditional_branch(cond_val, then_bb, elif_conds_bbs[0])
@@ -263,10 +284,10 @@ impl<'ctx> CodeGen<'ctx> {
 
                 // Then block
                 builder.position_at_end(then_bb);
-                for instr in then {
-                    self.generate_instr(instr, builder, map);
+                let returned = self.generate_body(then, builder, map);
+                if !returned {
+                    builder.build_unconditional_branch(end_bb).unwrap();
                 }
-                builder.build_unconditional_branch(end_bb).unwrap();
 
                 // Elif blocks
                 for (i, (elif_cond, elif_body)) in elifs.iter().enumerate() {
@@ -290,19 +311,19 @@ impl<'ctx> CodeGen<'ctx> {
                             .unwrap();
                     }
                     builder.position_at_end(body_bb);
-                    for instr in elif_body {
-                        self.generate_instr(instr, builder, map);
+                    let returned = self.generate_body(elif_body, builder, map);
+                    if !returned {
+                        builder.build_unconditional_branch(end_bb).unwrap();
                     }
-                    builder.build_unconditional_branch(end_bb).unwrap();
                 }
 
                 // Else block
                 if let Some(els_body) = els {
                     builder.position_at_end(else_bb.unwrap());
-                    for instr in els_body {
-                        self.generate_instr(instr, builder, map);
+                    let returned = self.generate_body(els_body, builder, map);
+                    if !returned {
+                        builder.build_unconditional_branch(end_bb).unwrap();
                     }
-                    builder.build_unconditional_branch(end_bb).unwrap();
                 }
 
                 // End block
@@ -382,15 +403,21 @@ impl<'ctx> CodeGen<'ctx> {
                 )
             }
             ExprKind::UniOp { op, expr } => {
-                let expr = self
-                    .generate_expr(expr, builder, map)
-                    .unwrap()
-                    .into_int_value();
+                let expr = self.generate_expr(expr, builder, map).unwrap();
                 Some(
                     match op {
-                        UniOp::Neg => builder.build_int_neg(expr, ""),
+                        UniOp::Neg => builder.build_int_neg(expr.into_int_value(), ""),
                         UniOp::Ref => todo!(),
                         UniOp::Deref => todo!(),
+                        UniOp::Not => match expr {
+                            inkwell::values::BasicValueEnum::IntValue(iv) => {
+                                builder.build_not(iv, "")
+                            }
+                            inkwell::values::BasicValueEnum::PointerValue(pv) => {
+                                builder.build_is_null(pv, "")
+                            }
+                            _ => panic!(),
+                        },
                     }
                     .unwrap()
                     .as_basic_value_enum(),
@@ -445,6 +472,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.strings.insert(id, global);
         global
     }
+    // fn build_cond(&self) {}
 
     pub fn print(&self, file: impl AsRef<std::path::Path>) {
         if let Err(e) = self.module.print_to_file(file) {

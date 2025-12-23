@@ -93,45 +93,41 @@ impl<'a> Resolver<'a> {
             }
         }
 
-        // second pass: resolve all types used in items
+        // second pass: resolve function and structure field types
         for item in items {
             match &item.kind {
                 ItemKind::Function {
                     name: _,
                     args,
                     ret,
-                    body,
+                    body: _,
                 } => {
                     let argc = args.len();
                     let mut var_args = false;
                     let mut arg_types = vec![];
 
-                    self.scope_stack.push();
                     for (i, (arg_name, arg_typ)) in args.iter().enumerate() {
                         let ty = match &arg_typ.kind {
-                            ArgTypKind::Typ(node) => self.resolve_typ(node),
+                            ArgTypKind::Typ(node) => Some(self.resolve_typ(node)),
                             ArgTypKind::VarArgs => {
                                 if i != argc - 1 {
                                     self.add_varargs_error(arg_typ.span);
                                 }
                                 var_args = true;
-                                // TODO: should be builtin varargs type (some kind of struct?)
-                                continue;
+                                // TODO: varargs should be some type (builtin struct?)
+                                None
                             }
                         };
 
                         let val = Value::Variable {
                             span: arg_name.span,
-                            typ: Some(ty.clone()),
+                            typ: ty.clone(),
                         };
-                        let arg_def_id = self.bindings.bind(arg_name.id, val);
+                        let _arg_def_id = self.bindings.bind(arg_name.id, val);
 
-                        if let Err(prev) = self.scope_stack.declare(arg_name.kind, arg_def_id) {
-                            let span = self.bindings.get(prev).span();
-                            self.add_dup_val_error(arg_name, span);
+                        if let Some(ty) = ty {
+                            arg_types.push(ty);
                         }
-
-                        arg_types.push(ty);
                     }
                     let ret_typ = ret
                         .as_ref()
@@ -149,11 +145,6 @@ impl<'a> Resolver<'a> {
                         }
                         _ => unreachable!(),
                     }
-
-                    if let Some(body_items) = body {
-                        self.resolve_body(body_items, &ret_typ);
-                    }
-                    self.scope_stack.pop();
                 }
                 ItemKind::Struct { name: _, fields } => {
                     for (_field_name, field_type) in fields {
@@ -165,6 +156,41 @@ impl<'a> Resolver<'a> {
                         self.resolve_typ(variant_type);
                     }
                 }
+            }
+        }
+
+        // third pass: resolve function bodies
+        for item in items {
+            match &item.kind {
+                ItemKind::Function {
+                    name: _,
+                    args,
+                    ret: _,
+                    body,
+                } => {
+                    self.scope_stack.push();
+                    for (arg_name, _) in args {
+                        let arg_def_id = self.bindings.def_of(arg_name.id);
+
+                        if let Err(prev) = self.scope_stack.declare(arg_name.kind, arg_def_id) {
+                            let span = self.bindings.get(prev).span();
+                            self.add_dup_val_error(arg_name, span);
+                        }
+                    }
+
+                    let val = self.bindings.resolve(item.id);
+                    let ret_typ = match val {
+                        Value::Function { typ, .. } => typ.as_ref().unwrap().ret.clone(),
+                        _ => unreachable!(),
+                    };
+
+                    if let Some(body_items) = body {
+                        self.resolve_body(body_items, &ret_typ);
+                    }
+                    self.scope_stack.pop();
+                }
+                ItemKind::Struct { .. } => {}
+                ItemKind::Union { .. } => {}
             }
         }
     }

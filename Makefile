@@ -1,4 +1,5 @@
 build:
+	rm -f rix rix.o rix.ll
 	cargo run -- main.rix -o rix.o
 	gcc -o rix rix.o
 

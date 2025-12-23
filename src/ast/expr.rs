@@ -75,6 +75,7 @@ pub enum UniOp {
     Neg,
     Ref,
     Deref,
+    Not,
 }
 impl std::fmt::Display for UniOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -82,6 +83,7 @@ impl std::fmt::Display for UniOp {
             UniOp::Neg => "-",
             UniOp::Ref => "&",
             UniOp::Deref => "*",
+            UniOp::Not => "!",
         };
         write!(f, "{}", op_str)
     }
