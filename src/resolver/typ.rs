@@ -7,6 +7,7 @@ pub enum Type {
     Slice(Rc<Type>),
     Ref(Rc<Type>),
     Ptr(Rc<Type>),
+    Array(Rc<Type>, u64),
     Function(Rc<FunctionType>),
 }
 impl Type {
@@ -59,6 +60,7 @@ impl<'a> std::fmt::Display for DisplayType<'a> {
             Type::Ref(t) => write!(f, "&{}", self.with(t)),
             Type::Ptr(t) => write!(f, "*{}", self.with(t)),
             Type::Function(t) => write!(f, "{}", DisplayFunctionType::new(self.interner, t)),
+            Type::Array(t, size) => write!(f, "[{}; {}]", self.with(t), size),
         }
     }
 }

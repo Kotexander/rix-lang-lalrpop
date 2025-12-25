@@ -3,7 +3,8 @@ use crate::strings;
 
 #[derive(Clone)]
 pub enum ExprKind {
-    Number(i32),
+    Number(i64),
+    ArrayInit(Box<Expr>, Box<Expr>),
     String(strings::Id),
 
     Variable(Ident),
@@ -29,6 +30,7 @@ pub enum ExprKind {
         name: Ident,
         fields: Vec<(Ident, Expr)>,
     },
+    // Error,
 }
 
 pub type Expr = Node<ExprKind>;

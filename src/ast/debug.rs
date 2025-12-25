@@ -229,6 +229,9 @@ impl<'a> std::fmt::Display for DisplayExpr<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.expr {
             super::ExprKind::Number(n) => write!(f, "{}", n),
+            super::ExprKind::ArrayInit(e, size) => {
+                write!(f, "[{}; {}]", self.with(&e.kind), self.with(&size.kind))
+            }
             super::ExprKind::String(id) => write!(f, "{:?}", self.interner.get(*id)),
             super::ExprKind::Variable(ident) => write!(f, "{}", self.interner.get(ident.kind)),
             super::ExprKind::Call { name, args } => {
@@ -302,6 +305,14 @@ impl<'a> std::fmt::Display for DisplayTyp<'a> {
             super::TypKind::Ref(typ) => write!(f, "&{}", self.with(&typ.kind)),
             super::TypKind::Slice(typ) => write!(f, "[{}]", self.with(&typ.kind)),
             super::TypKind::Ptr(typ) => write!(f, "*{}", self.with(&typ.kind)),
+            super::TypKind::Array(typ, size) => {
+                write!(
+                    f,
+                    "[{}; {}]",
+                    self.with(&typ.kind),
+                    DisplayExpr::new(self.interner, &size.kind)
+                )
+            }
         }
     }
 }

@@ -344,6 +344,19 @@ impl<'ctx> CodeGen<'ctx> {
                     .const_int(*n as u64, true)
                     .as_basic_value_enum(),
             ),
+            ExprKind::ArrayInit(e, size) => {
+                let e = self.generate_expr(e, builder, map).unwrap();
+                let t = e.get_type().array_type(
+                    self.annotations
+                        .get_const(size.id)
+                        .unwrap()
+                        .try_into()
+                        .unwrap(),
+                );
+                // TODO: not zero
+                Some(t.const_zero().as_basic_value_enum())
+                // Some(t.const_array(&[e.into_array_value()]).as_basic_value_enum())
+            }
             ExprKind::String(id) => Some(
                 self.get_or_insert_string(*id)
                     .as_pointer_value()
@@ -442,6 +455,12 @@ impl<'ctx> CodeGen<'ctx> {
                 .ptr_type(inkwell::AddressSpace::default())
                 .as_any_type_enum(),
             typ::Type::Slice(_) => todo!(),
+            typ::Type::Array(t, size) => {
+                let elem_typ = to_basic_type(self.get_llvm_type(t));
+                elem_typ
+                    .array_type((*size).try_into().unwrap())
+                    .as_any_type_enum()
+            }
             typ::Type::Function(t) => self.get_llvm_fn_type(t).as_any_type_enum(),
         }
     }

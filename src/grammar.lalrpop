@@ -78,6 +78,7 @@ extern {
 
         "=>" => Tok::EqualGreater,
         ":" => Tok::Colon,
+        ";" => Tok::Semicolon,
 
         "\n" => Tok::NewLine,
         id => Tok::Ident(<&'input str>),
@@ -110,6 +111,7 @@ TypKind: TypKind = {
     "&" <Box<Typ>> => TypKind::Ref(<>),
     "[" <Box<Typ>> "]" => TypKind::Slice(<>),
     "*" <Box<Typ>> => TypKind::Ptr(<>),
+    "[" <Box<Typ>> ";" <Box<Expr>> "]" => TypKind::Array(<>),
 }
 
 Instr: Instr = Node<InstrKind>;
@@ -117,7 +119,6 @@ InstrKind: InstrKind = {
     "return" <Expr?> => InstrKind::Return(<>),
     "var" <name: Ident> <typ: TypeHint?> "=" <expr: Expr> => InstrKind::VarInit{<>},
     <name: Ident> "=" <expr: Expr> => InstrKind::VarAssign{<>},
-    // "for" <var: Ident> "in" "(" <start: Expr> ".." <end: Expr> ")" <body: Block> => InstrKind::For{<>},
     "while" "(" <cond: Expr> ")" <body: Block> => InstrKind::While{<>},
     "break" => InstrKind::Break,
     "continue" => InstrKind::Continue,
@@ -143,6 +144,7 @@ ExprKind = Tier<BinOpBoolean,       // lowest precedence
 
 Term: ExprKind = {
     Num => ExprKind::Number(<>),
+    "[" <Box<Expr>> ";" <Box<Expr>> "]" => ExprKind::ArrayInit(<>),
     <op: UniOp> <expr: Box<Node<Term>>> => ExprKind::UniOp{<>},
     <name: Ident> "(" <args: Exprs> ")" => ExprKind::Call{<>},
     Ident => ExprKind::Variable(<>),
@@ -156,13 +158,13 @@ Term: ExprKind = {
     "(" <expr: Box<Node<Term>>> "." <field: Ident> ")" => ExprKind::FieldAccess{<>},
     "(" <ExprKind> ")" => <>,
     <name: Ident> "{" <fields: SeperatedList<FieldInit, ",">> "}" => ExprKind::StructInit{<>},
-    // ! => {errors.push(<>); ExprKind::Error},
+//    ! => {errors.push(<>); ExprKind::Error},
 }
 FieldInit: (Ident, Expr) = {
     "." <name: Ident> "=" <value: Expr> => (name, value)
 }
 
-Num: i32 = {
+Num: i64 = {
     <l:@L> <n: number> <r:@R> =>? {
         lexer::parse_number(n, l..r).map_err(|e| ParseError::User { error: e })
     }

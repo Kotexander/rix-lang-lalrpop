@@ -1,9 +1,16 @@
-build:
+rix:
 	rm -f rix rix.o rix.ll
 	cargo run -- main.rix -o rix.o
 	gcc -o rix rix.o
 
-run: build
+.PHONY: rule110
+rule110:
+	rm -f rule110 rule110.o
+	cargo run -- rule110.rix
+	cargo run -- rule110.rix --emit-llvm
+	gcc -o rule110 rule110.o
+
+run: rix
 	./rix
 
 ir:

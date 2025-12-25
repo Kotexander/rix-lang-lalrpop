@@ -20,7 +20,7 @@ use scope::ScopeStack;
 pub struct Resolver<'a> {
     errors: &'a mut Vec<Diagnostic<usize>>,
     file: usize,
-    bindings: Annotations,
+    annotations: Annotations,
     scope_stack: ScopeStack,
     interner: &'a mut strings::Interner,
 }
@@ -36,13 +36,13 @@ impl<'a> Resolver<'a> {
         Self {
             errors,
             file,
-            bindings,
+            annotations: bindings,
             scope_stack,
             interner,
         }
     }
     pub fn finish(self) -> Annotations {
-        self.bindings
+        self.annotations
     }
     fn resolve_typ(&mut self, typ: &Typ) -> typ::Type {
         match &typ.kind {
@@ -59,6 +59,10 @@ impl<'a> Resolver<'a> {
             TypKind::Ref(node) => typ::Type::Ref(std::rc::Rc::new(self.resolve_typ(node))),
             TypKind::Slice(node) => typ::Type::Slice(std::rc::Rc::new(self.resolve_typ(node))),
             TypKind::Ptr(node) => typ::Type::Ptr(std::rc::Rc::new(self.resolve_typ(node))),
+            TypKind::Array(node, expr) => {
+                let size: u64 = eval_expr(expr).try_into().unwrap();
+                typ::Type::Array(std::rc::Rc::new(self.resolve_typ(node)), size)
+            }
         }
     }
 
@@ -77,10 +81,10 @@ impl<'a> Resolver<'a> {
                         span: name.span,
                         typ: None,
                     };
-                    let def_id = self.bindings.bind(item.id, val);
+                    let def_id = self.annotations.bind(item.id, val);
 
                     if let Err(err) = self.scope_stack.declare(name.kind, def_id) {
-                        let span = self.bindings.get(err).span();
+                        let span = self.annotations.get(err).span();
                         self.add_dup_val_error(name, span);
                     }
                 }
@@ -123,7 +127,7 @@ impl<'a> Resolver<'a> {
                             span: arg_name.span,
                             typ: ty.clone(),
                         };
-                        let _arg_def_id = self.bindings.bind(arg_name.id, val);
+                        let _arg_def_id = self.annotations.bind(arg_name.id, val);
 
                         if let Some(ty) = ty {
                             arg_types.push(ty);
@@ -134,7 +138,7 @@ impl<'a> Resolver<'a> {
                         .map(|ret| self.resolve_typ(ret))
                         .unwrap_or(typ::Type::VOID);
 
-                    let val = self.bindings.resolve_mut(item.id);
+                    let val = self.annotations.resolve_mut(item.id);
                     match val {
                         Value::Function { typ, .. } => {
                             *typ = Some(typ::FunctionType {
@@ -170,15 +174,15 @@ impl<'a> Resolver<'a> {
                 } => {
                     self.scope_stack.push();
                     for (arg_name, _) in args {
-                        let arg_def_id = self.bindings.def_of(arg_name.id);
+                        let arg_def_id = self.annotations.def_of(arg_name.id);
 
                         if let Err(prev) = self.scope_stack.declare(arg_name.kind, arg_def_id) {
-                            let span = self.bindings.get(prev).span();
+                            let span = self.annotations.get(prev).span();
                             self.add_dup_val_error(arg_name, span);
                         }
                     }
 
-                    let val = self.bindings.resolve(item.id);
+                    let val = self.annotations.resolve(item.id);
                     let ret_typ = match val {
                         Value::Function { typ, .. } => typ.as_ref().unwrap().ret.clone(),
                         _ => unreachable!(),
@@ -217,14 +221,14 @@ impl<'a> Resolver<'a> {
                     span: name.span,
                     typ: Some(typ.unwrap_or(expr_typ)),
                 };
-                let def_id = self.bindings.bind(name.id, val);
+                let def_id = self.annotations.bind(name.id, val);
 
                 // allow variable shadowing
                 self.scope_stack.define(name.kind, def_id);
             }
             InstrKind::VarAssign { name, expr } => {
                 if let Some(def_id) = self.scope_stack.resolve(name.kind) {
-                    self.bindings.add_ref(name.id, def_id);
+                    self.annotations.add_ref(name.id, def_id);
                 } else {
                     self.add_undef_val_error(name);
                 }
@@ -282,14 +286,20 @@ impl<'a> Resolver<'a> {
     fn resolve_expr(&mut self, expr: &Expr) -> typ::Type {
         match &expr.kind {
             ExprKind::Number(_) => typ::Type::Primitive(typ::PrimitiveType::I32),
+            ExprKind::ArrayInit(e, size) => {
+                let typ = self.resolve_expr(e);
+                let s = eval_expr(size).try_into().unwrap();
+                self.annotations.set_const(size.id, s);
+                typ::Type::Array(Rc::new(typ), s)
+            }
             ExprKind::String(_) => {
                 typ::Type::Ptr(Rc::new(typ::Type::Primitive(typ::PrimitiveType::U8)))
             }
             ExprKind::Variable(var) => match self.scope_stack.resolve(var.kind) {
                 Some(def_id) => {
-                    let val = self.bindings.get(def_id);
+                    let val = self.annotations.get(def_id);
                     let typ = val.typ().unwrap();
-                    self.bindings.add_ref(var.id, def_id);
+                    self.annotations.add_ref(var.id, def_id);
                     typ
                 }
                 None => {
@@ -299,9 +309,9 @@ impl<'a> Resolver<'a> {
             },
             ExprKind::Call { name, args } => match self.scope_stack.resolve(name.kind) {
                 Some(def_id) => {
-                    let val = self.bindings.get(def_id);
+                    let val = self.annotations.get(def_id);
                     let typ = val.typ().unwrap();
-                    self.bindings.add_ref(name.id, def_id);
+                    self.annotations.add_ref(name.id, def_id);
 
                     match &typ {
                         typ::Type::Function(typ) => {
@@ -500,5 +510,24 @@ impl<'a> Resolver<'a> {
                     Label::primary(self.file, span).with_message("too few arguments here"),
                 ]),
         );
+    }
+}
+
+fn eval_expr(expr: &Expr) -> i64 {
+    match &expr.kind {
+        ExprKind::Number(n) => *n,
+        ExprKind::BinOp { op, l, r } => {
+            let l_val = eval_expr(l);
+            let r_val = eval_expr(r);
+            match op {
+                BinOp::Add => l_val.checked_add(r_val).unwrap(),
+                BinOp::Sub => l_val.checked_sub(r_val).unwrap(),
+                BinOp::Mul => l_val.checked_mul(r_val).unwrap(),
+                BinOp::Div => l_val.checked_div(r_val).unwrap(),
+                BinOp::Mod => l_val.checked_rem(r_val).unwrap(),
+                _ => panic!("unsupported operation in constant expression"),
+            }
+        }
+        _ => panic!("unsupported expression in constant expression"),
     }
 }

@@ -1,0 +1,8 @@
+fn puts(s: *u8) : i32
+
+fn main() : i32 {
+    # 2 boards
+    var board: [[i32; 40]; 2] = [[0; 40]; 2]
+
+    return 0
+}

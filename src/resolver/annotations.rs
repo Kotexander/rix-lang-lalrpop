@@ -7,12 +7,14 @@ pub struct DefId(usize);
 pub struct Annotations {
     refs: HashMap<NodeId, DefId>,
     defs: Vec<Value>,
+    consts: HashMap<NodeId, u64>,
 }
 impl Annotations {
     pub fn new() -> Self {
         Self {
             defs: Vec::new(),
             refs: HashMap::new(),
+            consts: HashMap::new(),
         }
     }
     pub fn resolve(&self, node: NodeId) -> &Value {
@@ -43,6 +45,12 @@ impl Annotations {
         self.defs.push(val);
         self.refs.insert(node, def);
         def
+    }
+    pub fn set_const(&mut self, node: NodeId, value: u64) {
+        self.consts.insert(node, value);
+    }
+    pub fn get_const(&self, node: NodeId) -> Option<u64> {
+        self.consts.get(&node).copied()
     }
     pub fn add_ref(&mut self, node: NodeId, def: DefId) {
         debug_assert!(

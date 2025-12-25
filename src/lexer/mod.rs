@@ -50,8 +50,8 @@ pub fn parse_string_literal<'a>(
     }
     Ok(Cow::Owned(result))
 }
-pub fn parse_number(str: &str, span: Range<usize>) -> Result<i32, Error> {
-    match str.parse::<i32>() {
+pub fn parse_number(str: &str, span: Range<usize>) -> Result<i64, Error> {
+    match str.parse() {
         Ok(n) => Ok(n),
         Err(e) => Err(Error::ParseInt { span, err: e }),
     }
@@ -63,6 +63,7 @@ pub enum Tok<'input> {
     String(usize, &'input str),
     NewLine,
     Colon,
+    Semicolon,
 
     Plus,
     Minus,
@@ -240,6 +241,7 @@ impl<'input> Iterator for Lexer<'input> {
                 ',' => return Some(Ok((i, Tok::Comma, i + ch.len_utf8()))),
                 '\n' => return Some(Ok((i, Tok::NewLine, i + ch.len_utf8()))),
                 ':' => return Some(Ok((i, Tok::Colon, i + ch.len_utf8()))),
+                ';' => return Some(Ok((i, Tok::Semicolon, i + ch.len_utf8()))),
                 '.' => {
                     let (tok, j) = if let Some((ni, nch)) = self.chars.peek()
                         && *nch == '.'

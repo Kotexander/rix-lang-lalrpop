@@ -1,3 +1,4 @@
+use super::Expr;
 use super::Ident;
 use super::Node;
 
@@ -7,7 +8,7 @@ pub enum TypKind {
     Ref(Box<Typ>),
     Slice(Box<Typ>),
     Ptr(Box<Typ>),
-    // VarArgs,
+    Array(Box<Typ>, Box<Expr>),
 }
 
 pub type Typ = Node<TypKind>;
