@@ -1,5 +1,6 @@
 use std::{borrow::Cow, iter::Peekable, num::ParseIntError, ops::Range, str::CharIndices};
 
+#[derive(Debug, Clone)]
 pub enum Error {
     UnterminatedString {
         span: Range<usize>,
@@ -57,30 +58,47 @@ pub fn parse_number(str: &str, span: Range<usize>) -> Result<i64, Error> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tok<'input> {
     Number(&'input str),
     String(usize, &'input str),
-    NewLine,
-    Colon,
-    Semicolon,
+    Ident(&'input str),
 
     Plus,
     Minus,
     Slash,
-    Percent,
-    Apersand,
-    Not,
-
     Asterisk,
+    Percent,
+    Ampersand,
+    Caret,
+    Pipe,
+    And,
+    Or,
+
+    NewLine,
+    Colon,
+    Semicolon,
+    Dot,
+    DotDot,
+    DotDotDot,
+    Comma,
+    Bang,
+
     Equal,
     EqualEqual,
+
+    /// <
     LessThan,
+    /// >
     GreaterThan,
     /// <=
     LessEqual,
+    /// <<
+    LessLess,
     /// >=
     GreaterEqual,
+    /// >>
+    GreaterGreater,
     /// !=
     NotEqual,
     /// =>
@@ -93,28 +111,79 @@ pub enum Tok<'input> {
     LBracket,
     RBracket,
 
-    Comma,
-    Dot,
-    DotDot,
-    DotDotDot,
-    Ident(&'input str),
-
     While,
+    For,
+    In,
     Break,
     Continue,
+
+    If,
+    Else,
 
     Fn,
     Return,
     Var,
-    For,
-    And,
-    Or,
-    In,
-    If,
-    Else,
+
     Struct,
     Union,
 }
+impl std::fmt::Display for Tok<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Tok::Number(n) => write!(f, "`{}`", n),
+            Tok::String(_, s) => write!(f, "`{:?}`", s),
+            Tok::Ident(i) => write!(f, "`{}`", i),
+            Tok::NewLine => write!(f, "`\\n`"),
+            Tok::Colon => write!(f, "`:`"),
+            Tok::Semicolon => write!(f, "`;`"),
+            Tok::Plus => write!(f, "`+`"),
+            Tok::Minus => write!(f, "`-`"),
+            Tok::Slash => write!(f, "`/`"),
+            Tok::Percent => write!(f, "`%`"),
+            Tok::Ampersand => write!(f, "`&`"),
+            Tok::Bang => write!(f, "`!`"),
+            Tok::Caret => write!(f, "`^`"),
+            Tok::Pipe => write!(f, "`|`"),
+            Tok::Asterisk => write!(f, "`*`"),
+            Tok::Equal => write!(f, "`=`"),
+            Tok::EqualEqual => write!(f, "`==`"),
+            Tok::LessThan => write!(f, "`<`"),
+            Tok::GreaterThan => write!(f, "`>`"),
+            Tok::LessEqual => write!(f, "`<=`"),
+            Tok::LessLess => write!(f, "`<<`"),
+            Tok::GreaterEqual => write!(f, "`>=`"),
+            Tok::GreaterGreater => write!(f, "`>>`"),
+            Tok::NotEqual => write!(f, "`!=`"),
+            Tok::EqualGreater => write!(f, "`=>`"),
+            Tok::LParen => write!(f, "`(`"),
+            Tok::RParen => write!(f, "`)`"),
+            Tok::LBrace => write!(f, "`{{`"),
+            Tok::RBrace => write!(f, "`}}`"),
+            Tok::LBracket => write!(f, "`[`"),
+            Tok::RBracket => write!(f, "`]`"),
+            Tok::Comma => write!(f, "`,`"),
+            Tok::Dot => write!(f, "`.`"),
+            Tok::DotDot => write!(f, "`..`"),
+            Tok::DotDotDot => write!(f, "`...`"),
+            Tok::While => write!(f, "`while`"),
+            Tok::Break => write!(f, "`break`"),
+            Tok::Continue => write!(f, "`continue`"),
+            Tok::Fn => write!(f, "`fn`"),
+            Tok::Return => write!(f, "`return`"),
+            Tok::Var => write!(f, "`var`"),
+            Tok::For => write!(f, "`for`"),
+            Tok::And => write!(f, "`and`"),
+            Tok::Or => write!(f, "`or`"),
+            Tok::In => write!(f, "`in`"),
+            Tok::If => write!(f, "`if`"),
+            Tok::Else => write!(f, "`else`"),
+            Tok::Struct => write!(f, "`struct`"),
+            Tok::Union => write!(f, "`union`"),
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct Lexer<'input> {
     chars: Peekable<CharIndices<'input>>,
     input: &'input str,
@@ -182,8 +251,10 @@ impl<'input> Iterator for Lexer<'input> {
                 '-' => return Some(Ok((i, Tok::Minus, i + ch.len_utf8()))),
                 '*' => return Some(Ok((i, Tok::Asterisk, i + ch.len_utf8()))),
                 '/' => return Some(Ok((i, Tok::Slash, i + ch.len_utf8()))),
-                '&' => return Some(Ok((i, Tok::Apersand, i + ch.len_utf8()))),
+                '&' => return Some(Ok((i, Tok::Ampersand, i + ch.len_utf8()))),
                 '%' => return Some(Ok((i, Tok::Percent, i + ch.len_utf8()))),
+                '^' => return Some(Ok((i, Tok::Caret, i + ch.len_utf8()))),
+                '|' => return Some(Ok((i, Tok::Pipe, i + ch.len_utf8()))),
                 '!' => {
                     let (tok, j) = if let Some((ni, nch)) = self.chars.peek() {
                         let ni = *ni;
@@ -193,10 +264,10 @@ impl<'input> Iterator for Lexer<'input> {
                                 self.chars.next();
                                 (Tok::NotEqual, ni + nch.len_utf8())
                             }
-                            _ => (Tok::Not, i + ch.len_utf8()),
+                            _ => (Tok::Bang, i + ch.len_utf8()),
                         }
                     } else {
-                        (Tok::Not, i + ch.len_utf8())
+                        (Tok::Bang, i + ch.len_utf8())
                     };
                     return Some(Ok((i, tok, j)));
                 }
@@ -208,6 +279,10 @@ impl<'input> Iterator for Lexer<'input> {
                             '=' => {
                                 self.chars.next();
                                 (Tok::LessEqual, ni + nch.len_utf8())
+                            }
+                            '<' => {
+                                self.chars.next();
+                                (Tok::LessLess, ni + nch.len_utf8())
                             }
                             _ => (Tok::LessThan, i + ch.len_utf8()),
                         }
@@ -224,6 +299,10 @@ impl<'input> Iterator for Lexer<'input> {
                             '=' => {
                                 self.chars.next();
                                 (Tok::GreaterEqual, ni + nch.len_utf8())
+                            }
+                            '>' => {
+                                self.chars.next();
+                                (Tok::GreaterGreater, ni + nch.len_utf8())
                             }
                             _ => (Tok::GreaterThan, i + ch.len_utf8()),
                         }
@@ -306,11 +385,12 @@ impl<'input> Iterator for Lexer<'input> {
                     }
                 }
 
-                ch if ch.is_whitespace() => {
-                    self.eat_whitespace();
-                }
                 '#' => {
                     self.eat_comment();
+                }
+
+                ch if ch.is_whitespace() => {
+                    self.eat_whitespace();
                 }
                 ch if ch.is_alphabetic() || ch == '_' => {
                     let mut end = i + ch.len_utf8();

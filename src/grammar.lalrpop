@@ -28,72 +28,15 @@ grammar<'input, 'err>(input: &'input str,
                       builder: &mut AstBuilder,
                       errors: &'err mut Vec<ErrorRecovery<usize, Tok<'input>, lexer::Error>>);
 
-extern {
-    type Location = usize;
-    type Error = lexer::Error;
 
-    enum Tok<'input> {
-        "fn" => Tok::Fn,
-        "return" => Tok::Return,
-        "var" => Tok::Var,
-        "for" => Tok::For,
-        "while" => Tok::While,
-        "break" => Tok::Break,
-        "continue" => Tok::Continue,
-        "in" => Tok::In,
-        "if" => Tok::If,
-        "else" => Tok::Else,
-        "struct" => Tok::Struct,
-        "union" => Tok::Union,
-
-        "(" => Tok::LParen,
-        ")" => Tok::RParen,
-        "{" => Tok::LBrace,
-        "}" => Tok::RBrace,
-        "[" => Tok::LBracket,
-        "]" => Tok::RBracket,
-
-        "+" => Tok::Plus,
-        "-" => Tok::Minus,
-        "*" => Tok::Asterisk,
-        "/" => Tok::Slash,
-        "&" => Tok::Apersand,
-        "%" => Tok::Percent,
-        "!" => Tok::Not,
-
-        "." => Tok::Dot,
-        ".." => Tok::DotDot,
-        "..." => Tok::DotDotDot,
-        "," => Tok::Comma,
-
-        "=" => Tok::Equal,
-        "<" => Tok::LessThan,
-        ">" => Tok::GreaterThan,
-        "<=" => Tok::LessEqual,
-        ">=" => Tok::GreaterEqual,
-        "==" => Tok::EqualEqual,
-        "!=" => Tok::NotEqual,
-        "and" => Tok::And,
-        "or" => Tok::Or,
-
-        "=>" => Tok::EqualGreater,
-        ":" => Tok::Colon,
-        ";" => Tok::Semicolon,
-
-        "\n" => Tok::NewLine,
-        id => Tok::Ident(<&'input str>),
-        number => Tok::Number(<&'input str>),
-        string => Tok::String(<usize>, <&'input str>),
-    }
-}
 
 pub Program = ("\n")* <SeperatedList<Item, "\n"+>>;
 
 Item: Item = Node<ItemKind>;
 ItemKind: ItemKind = {
     "fn" <name: Ident> "(" <args: SeperatedList<Arg, ",">> ")" <ret: (":" <Typ>)?> <body: (Block)?> => ItemKind::Function{<>},
-    "struct" <name: Ident> "{" "\n"+ <fields: SeperatedList<Field, "\n"+>> "}" => ItemKind::Struct{<>},
-    "union" <name: Ident> "{" "\n"+ <variants: SeperatedList<Field, "\n"+>> "}" => ItemKind::Union{<>},
+    // "struct" <name: Ident> "{" "\n"+ <fields: SeperatedList<Field, "\n"+>> "}" => ItemKind::Struct{<>},
+    // "union" <name: Ident> "{" "\n"+ <variants: SeperatedList<Field, "\n"+>> "}" => ItemKind::Union{<>},
     // ! => {errors.push(<>); Item::Error},
 }
 
@@ -136,11 +79,13 @@ TypeHint: Typ = {
 Exprs: Vec<Expr> = SeperatedList<Expr, ",">;
 
 Expr: Expr = Node<ExprKind>;
-ExprKind = Tier<BinOpBoolean,       // lowest precedence
-           Tier<BinOpComparison,
-           Tier<BinOpExpr,
-           Tier<BinOpFactor, Term   // highest precedence
-           >>>>;
+ExprKind = Tier<OrOp,       // lowest precedence
+           Tier<AndOp,
+           Tier<EquOp,
+           Tier<CompOp,
+           Tier<AddSubOp,
+           Tier<MulDivOp, Term   // highest precedence
+           >>>>>>;
 
 Term: ExprKind = {
     Num => ExprKind::Number(<>),
@@ -173,27 +118,34 @@ Ident: Ident = {
     <l:@L> <s:id> <r:@R> => Ident::new(l, builder.interner.intern(s), r, builder.node_id_gen.next_id())
 }
 
-BinOpFactor: BinOp = {
+MulDivOp: BinOp = {
     "*" => BinOp::Mul,
     "/" => BinOp::Div,
     "%" => BinOp::Mod,
 }
-BinOpExpr: BinOp = {
+AddSubOp: BinOp = {
     "+" => BinOp::Add,
     "-" => BinOp::Sub,
 }
-BinOpBoolean: BinOp = {
+
+AndOp: BinOp = {
     "and" => BinOp::And,
+}
+OrOp: BinOp = {
     "or" => BinOp::Or,
 }
-BinOpComparison: BinOp = {
-    "==" => BinOp::Eq,
+
+CompOp: BinOp = {
     "<" => BinOp::Lt,
     ">" => BinOp::Gt,
     "<=" => BinOp::Le,
     ">=" => BinOp::Ge,
+}
+EquOp: BinOp = {
+    "==" => BinOp::Eq,
     "!=" => BinOp::Ne,
 }
+
 UniOp: UniOp = {
     "-" => UniOp::Neg,
     "&" => UniOp::Ref,
@@ -221,3 +173,63 @@ Node<T>: Node<T> = {
 }
 
 Box<T>: Box<T> = <T> => Box::new(<>);
+
+
+extern {
+    type Location = usize;
+    type Error = lexer::Error;
+
+    enum Tok<'input> {
+        "fn" => Tok::Fn,
+        "return" => Tok::Return,
+        "var" => Tok::Var,
+        "for" => Tok::For,
+        "while" => Tok::While,
+        "break" => Tok::Break,
+        "continue" => Tok::Continue,
+        "in" => Tok::In,
+        "if" => Tok::If,
+        "else" => Tok::Else,
+        "struct" => Tok::Struct,
+        "union" => Tok::Union,
+
+        "(" => Tok::LParen,
+        ")" => Tok::RParen,
+        "{" => Tok::LBrace,
+        "}" => Tok::RBrace,
+        "[" => Tok::LBracket,
+        "]" => Tok::RBracket,
+
+        "+" => Tok::Plus,
+        "-" => Tok::Minus,
+        "*" => Tok::Asterisk,
+        "/" => Tok::Slash,
+        "&" => Tok::Ampersand,
+        "%" => Tok::Percent,
+        "!" => Tok::Bang,
+
+        "." => Tok::Dot,
+        ".." => Tok::DotDot,
+        "..." => Tok::DotDotDot,
+        "," => Tok::Comma,
+
+        "=" => Tok::Equal,
+        "<" => Tok::LessThan,
+        ">" => Tok::GreaterThan,
+        "<=" => Tok::LessEqual,
+        ">=" => Tok::GreaterEqual,
+        "==" => Tok::EqualEqual,
+        "!=" => Tok::NotEqual,
+        "and" => Tok::And,
+        "or" => Tok::Or,
+
+        "=>" => Tok::EqualGreater,
+        ":" => Tok::Colon,
+        ";" => Tok::Semicolon,
+
+        "\n" => Tok::NewLine,
+        id => Tok::Ident(<&'input str>),
+        number => Tok::Number(<&'input str>),
+        string => Tok::String(<usize>, <&'input str>),
+    }
+}

@@ -79,7 +79,7 @@ fn main() -> Result<(), ReturnStatus> {
     let config = term::Config::default();
 
     let mut errors = Vec::new();
-    let mut ast_builder = AstBuilder::default();
+    let mut ast_builder = AstBuilder::new();
     let ast = grammar::ProgramParser::new().parse(
         &input,
         &mut ast_builder,

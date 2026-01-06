@@ -24,9 +24,12 @@ impl From<Span> for std::ops::Range<usize> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct NodeId(usize);
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy)]
 pub struct NodeIdGen(usize);
 impl NodeIdGen {
+    pub fn new() -> Self {
+        Self(0)
+    }
     pub fn next_id(&mut self) -> NodeId {
         let id = self.0;
         self.0 += 1;
@@ -52,8 +55,15 @@ impl<T> Node<T> {
 
 pub type Ident = Node<strings::Id>;
 
-#[derive(Default)]
 pub struct AstBuilder {
     pub node_id_gen: NodeIdGen,
     pub interner: strings::Interner,
+}
+impl AstBuilder {
+    pub fn new() -> Self {
+        Self {
+            node_id_gen: NodeIdGen::new(),
+            interner: strings::Interner::new(),
+        }
+    }
 }

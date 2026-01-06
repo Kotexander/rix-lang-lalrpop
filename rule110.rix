@@ -4,5 +4,12 @@ fn main() : i32 {
     # 2 boards
     var board: [[i32; 40]; 2] = [[0; 40]; 2]
 
+    var i = 0
+    var p = 0
+    while (p < 40-2) {
+        var mask = 0
+        # mask = mask | board[i][p] & 1 << 2
+    }
+
     return 0
 }
